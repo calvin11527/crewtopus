@@ -1,6 +1,6 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { getDatabase } from '../database';
-import { generateId, now, parseJson } from '../utils/helpers';
+import { generateId, now } from '../utils/helpers';
 import {
   runPrivacyGuard,
   scanForSecrets,
@@ -14,26 +14,26 @@ const router = Router();
 
 /** Simple in-memory rate limiter for privacy endpoints (local-first; per-IP). */
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
-function rateLimit(maxPerMinute = 60) {
-  return (req: Request, res: Response, next: () => void): void => {
-    const key = req.ip || req.socket.remoteAddress || 'local';
-    const nowMs = Date.now();
-    let bucket = rateBuckets.get(key);
-    if (!bucket || bucket.resetAt <= nowMs) {
-      bucket = { count: 0, resetAt: nowMs + 60_000 };
-      rateBuckets.set(key, bucket);
-    }
-    bucket.count += 1;
-    if (bucket.count > maxPerMinute) {
-      res.status(429).json({ message: 'Rate limit exceeded. Try again shortly.' });
-      return;
-    }
-    next();
-  };
+function rateLimitMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const maxPerMinute = 60;
+  const key = req.ip || req.socket.remoteAddress || 'local';
+  const nowMs = Date.now();
+  let bucket = rateBuckets.get(key);
+  if (!bucket || bucket.resetAt <= nowMs) {
+    bucket = { count: 0, resetAt: nowMs + 60_000 };
+    rateBuckets.set(key, bucket);
+  }
+  bucket.count += 1;
+  if (bucket.count > maxPerMinute) {
+    res.status(429).json({ message: 'Rate limit exceeded. Try again shortly.' });
+    return;
+  }
+  next();
 }
 
+router.use(rateLimitMiddleware);
 
-router.post('/scan', rateLimit(30), (req: Request, res: Response) => {
+router.post('/scan', (req: Request, res: Response) => {
   const { content, location } = req.body;
   if (!content) {
     res.status(400).json({ message: 'content is required' });
@@ -42,7 +42,7 @@ router.post('/scan', rateLimit(30), (req: Request, res: Response) => {
   res.json({ matches: scanForSecrets(content, location || 'input') });
 });
 
-router.post('/guard', rateLimit(30), (req: Request, res: Response) => {
+router.post('/guard', (req: Request, res: Response) => {
   const { scope, agentType, filePaths, basePath, workspaceId } = req.body as {
     scope: ContextScope;
     agentType: AgentType;
@@ -59,7 +59,7 @@ router.post('/guard', rateLimit(30), (req: Request, res: Response) => {
   res.json(runPrivacyGuard(scope, agentType, filePaths, basePath, workspaceId));
 });
 
-router.post('/sanitize-paths', rateLimit(30), (req: Request, res: Response) => {
+router.post('/sanitize-paths', (req: Request, res: Response) => {
   const { filePaths, basePath } = req.body;
   if (!filePaths || !Array.isArray(filePaths)) {
     res.status(400).json({ message: 'filePaths array is required' });
@@ -73,7 +73,7 @@ router.get('/policies', (req: Request, res: Response) => {
   res.json(listPolicies(workspaceId));
 });
 
-router.post('/policies', rateLimit(20), (req: Request, res: Response) => {
+router.post('/policies', (req: Request, res: Response) => {
   const { name, rules, workspaceId } = req.body as {
     name: string;
     rules: PrivacyRule[];

@@ -68,7 +68,7 @@ async function main() {
   console.log(`WS event types seen: ${[...allTypes].sort().join(', ')}`);
   console.log(`work_item:cli_output events: ${cliEvents.length}`);
   console.log(`stdout chunks: ${stdoutChunks.length}`);
-  console.log(`combined stdout preview: ${combined.slice(0, 200).replace(/[\r\n]/g, ' ')}`);
+  console.log('combined stdout preview length:', combined.length);
 
   if (cliEvents.length === 0) {
     console.error('FAIL: no work_item:cli_output events received');

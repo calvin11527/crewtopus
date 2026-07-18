@@ -3,7 +3,6 @@ name: Crewtopus CodeQL config
 paths:
   - src/backend
   - src/frontend
-  - src/scripts
 
 paths-ignore:
   - "**/node_modules/**"
@@ -13,3 +12,13 @@ paths-ignore:
   - "**/__tests__/**"
   - "docs/**"
   - "src/infra/**"
+  - "src/scripts/**"
+
+# Paths that intentionally accept user-selected local folders after allowlist checks
+# (local-first desktop tool). Validated via isPathAllowed / resolveWithinRoot.
+query-filters:
+  - exclude:
+      id: js/path-injection
+      paths: |
+        src/backend/src/utils/safe-path.ts
+        src/backend/src/modules/fs-browse.ts

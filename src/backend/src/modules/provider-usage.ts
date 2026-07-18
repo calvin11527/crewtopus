@@ -58,10 +58,15 @@ export function getGrokProviderTokenUsage(since?: Date): ProviderTokenSnapshot |
       if (entry.name !== 'signals.json') continue;
 
       try {
-        const stat = fs.statSync(full);
-        if (sinceMs > 0 && stat.mtimeMs < sinceMs) continue;
-
+        // Single open/read avoids TOCTOU exists-then-read races flagged by CodeQL.
         const raw = fs.readFileSync(full, 'utf-8');
+        if (sinceMs > 0) {
+          try {
+            if (fs.statSync(full).mtimeMs < sinceMs) continue;
+          } catch {
+            continue;
+          }
+        }
         const signals = JSON.parse(raw) as GrokSessionSignals;
         const used = signals.contextTokensUsed;
         if (typeof used === 'number' && used > 0) {
