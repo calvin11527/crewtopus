@@ -48,7 +48,7 @@
     "clean": "rm -rf node_modules backend/node_modules frontend/node_modules backend/dist frontend/dist"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^10.0.3"
   },
   "engines": {
     "node": ">=20.0.0"
