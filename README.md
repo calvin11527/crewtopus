@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-red.svg" alt="PolyForm Noncommercial License" /></a>
   <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node.js" /></a>
   <a href="https://github.com/calvin11527/crewtopus/releases"><img src="https://img.shields.io/github/v/release/calvin11527/crewtopus?include_prereleases" alt="Release" /></a>
 </p>
@@ -92,7 +92,7 @@ See **[.env.example](./.env.example)** for environment variables.
 ```
 crewtopus/
 ├── README.md
-├── LICENSE                 # MIT
+├── LICENSE                 # PolyForm Noncommercial 1.0.0
 ├── SECURITY.md
 ├── .env.example
 ├── docs/
@@ -142,6 +142,14 @@ Issues and PRs welcome. Please:
 
 ## License
 
-[MIT](./LICENSE) © Crewtopus Contributors
+[PolyForm Noncommercial License 1.0.0](./LICENSE) © Crewtopus Contributors
 
-Released as open source under MIT starting with **v0.1.0**.
+**Non-commercial use only.** You may use, study, and modify Crewtopus for personal,
+educational, research, hobby, and other non-commercial purposes. **Commercial use
+is not allowed** under this license (for example selling the software, using it to
+provide paid services, or internal business use that is commercial in nature).
+
+For commercial licensing, contact the maintainers.
+
+> **Note:** Code published under MIT before this change remains available under MIT
+> for those earlier commits only. This and future releases use PolyForm Noncommercial.

@@ -2,7 +2,7 @@
   "name": "crewtopus",
   "version": "0.1.0",
   "description": "Crewtopus \u2014 many AI arms, one sprint crew. Local multi-agent orchestration.",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "private": true,
   "repository": {
     "type": "git",

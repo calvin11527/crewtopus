@@ -26,4 +26,4 @@ See [Getting Started](Getting-Started).
 
 ## License
 
-By contributing, you agree that contributions are licensed under the [MIT License](https://github.com/calvin11527/crewtopus/blob/main/LICENSE).
+By contributing, you agree that contributions are licensed under the [PolyForm Noncommercial License](https://github.com/calvin11527/crewtopus/blob/main/LICENSE).
