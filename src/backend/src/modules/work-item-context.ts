@@ -15,6 +15,7 @@ import {
 } from './context-path-filters';
 import { getWorkspace, listRepositories, getPrimaryRepository } from './workspace';
 import { resolveWorkDir } from './work-items';
+import { resolveWithinRoot } from '../utils/safe-path';
 
 export { isExcludedContextPath } from './context-path-filters';
 
@@ -38,7 +39,9 @@ export function matchesIgnorePattern(relPath: string, pattern: string): boolean 
   if (pattern.endsWith('/')) return relPath.startsWith(pattern.slice(0, -1));
   if (pattern.startsWith('*.')) return relPath.endsWith(pattern.slice(1));
   if (pattern.includes('*')) {
-    const regex = new RegExp('^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$');
+    // Escape all regex metacharacters except *, then map * → [^/]* (no ReDoS-prone .*)
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*');
+    const regex = new RegExp('^' + escaped + '$');
     return regex.test(relPath);
   }
   return relPath === pattern || relPath.endsWith('/' + pattern);
@@ -71,7 +74,13 @@ export function collectRepoContextFiles(
     if (entry.isDirectory() && CONTEXT_DIR_EXCLUSIONS.has(entry.name)) continue;
     if (!entry.isDirectory() && isExcludedContextFilename(entry.name)) continue;
 
-    const full = path.join(rootDir, entry.name);
+    if (entry.name.includes('..') || entry.name.includes('/') || entry.name.includes('\\')) continue;
+    let full: string;
+    try {
+      full = resolveWithinRoot(rootDir, entry.name);
+    } catch {
+      continue;
+    }
     if (entry.isDirectory()) {
       results.push(...collectRepoContextFiles(full, patterns, maxFiles - results.length, depth + 1));
     } else if (patterns.some((p) => matchContextGlob(entry.name, p))) {
@@ -86,18 +95,26 @@ export function collectRepoContextFiles(
 /** List absolute paths of files in a work directory. */
 export function listWorkDirFilePaths(workDir?: string): string[] {
   if (!workDir || !fs.existsSync(workDir)) return [];
-  return fs
-    .readdirSync(workDir)
-    .filter((name) => {
-      if (isExcludedContextFilename(name)) return false;
-      return fs.statSync(path.join(workDir, name)).isFile();
-    })
-    .map((name) => path.join(workDir, name));
+  const out: string[] = [];
+  for (const name of fs.readdirSync(workDir)) {
+    if (isExcludedContextFilename(name)) continue;
+    if (name.includes('/') || name.includes('\\') || name.includes('..')) continue;
+    try {
+      const full = resolveWithinRoot(workDir, name);
+      if (fs.statSync(full).isFile()) out.push(full);
+    } catch {
+      /* skip */
+    }
+  }
+  return out;
 }
 
 /**
  * Repo or scratch root used for context resolution (read-only scope).
  * Workspace-linked items use the primary project folder; otherwise work-dir fallback.
+ */
+/**
+ * Working root for a work item: linked repo path when available, otherwise AGENTHUB_WORK_DIR.
  */
 export function resolveWorkItemWorkDir(workItem: WorkItem): string {
   if (workItem.workspaceId) {
@@ -107,6 +124,13 @@ export function resolveWorkItemWorkDir(workItem: WorkItem): string {
     }
   }
   return resolveWorkDir();
+}
+
+/** True when the work item has a linked workspace repository on disk. */
+export function hasLinkedRepository(workItem: WorkItem): boolean {
+  if (!workItem.workspaceId) return false;
+  const primaryRepo = getPrimaryRepository(workItem.workspaceId);
+  return Boolean(primaryRepo && fs.existsSync(primaryRepo.path));
 }
 
 /**
@@ -224,9 +248,9 @@ export function buildWorkItemContextGroups(
   workDir?: string,
   options: { loopIteration?: number; deltaSinceMs?: number } = {}
 ): { groups: ContextFileGroup[]; basePath: string } {
-  const resolvedWorkDir = workDir ?? resolveWorkItemOutputDir(workItem);
+  const resolvedWorkDir = workDir || resolveWorkItemOutputDir(workItem);
   const workDirPaths = listWorkDirFilePaths(resolvedWorkDir);
-  const { filePaths, basePath } = resolveWorkItemContextPaths(workItem, workDir);
+  const { filePaths, basePath } = resolveWorkItemContextPaths(workItem, workDir || undefined);
   const workDirSet = new Set(workDirPaths);
   const repoPaths = filePaths.filter((p) => !workDirSet.has(p));
 
@@ -292,7 +316,13 @@ export function buildWorkDirExcerpts(
 ): string {
   const excerpts: string[] = [];
   for (const name of fileNames.slice(0, maxFiles)) {
-    const filePath = path.join(workDir, name);
+    if (name.includes('..') || name.includes('/') || name.includes('\\')) continue;
+    let filePath: string;
+    try {
+      filePath = resolveWithinRoot(workDir, name);
+    } catch {
+      continue;
+    }
     if (!fs.existsSync(filePath)) continue;
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
@@ -326,10 +356,10 @@ export function buildWorkItemContextScope(
   contextSummary?: ContextSummary;
   workDirSecretIssues?: string[];
 } {
-  const resolvedWorkDir = workDir ?? resolveWorkItemOutputDir(workItem);
+  const resolvedWorkDir = workDir || resolveWorkItemOutputDir(workItem);
   const workDirSecretIssues = scanWorkDirSecrets(resolvedWorkDir);
 
-  const { groups, basePath } = buildWorkItemContextGroups(workItem, workDir, {
+  const { groups, basePath } = buildWorkItemContextGroups(workItem, workDir || undefined, {
     loopIteration: options.loopIteration,
     deltaSinceMs: options.deltaSinceMs,
   });

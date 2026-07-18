@@ -3,6 +3,7 @@ import path from 'path';
 import zlib from 'zlib';
 import type { ContextScope } from '../types';
 import { canonicalizeScope } from './context-scope';
+import { sanitizePathId } from '../utils/safe-path';
 
 /** Resolve `.agenthub-work/_audit` directory for context snapshots. */
 export function resolveAuditSnapshotDir(): string {
@@ -29,7 +30,8 @@ export function resolveAuditSnapshotDir(): string {
 }
 
 function snapshotPath(auditId: string): string {
-  return path.join(resolveAuditSnapshotDir(), `${auditId}.json.gz`);
+  const safeId = sanitizePathId(auditId);
+  return path.join(resolveAuditSnapshotDir(), `${safeId}.json.gz`);
 }
 
 /** Persist a gzip-compressed canonical context snapshot for forensic replay. */

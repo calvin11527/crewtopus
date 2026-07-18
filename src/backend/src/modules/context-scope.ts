@@ -1,11 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import type { ContextScope } from '../types';
 import { estimateTokens } from '../adapters/base';
 import { scanForSecrets } from './privacy-guard';
 import { isExcludedContextPath } from './context-path-filters';
+import { resolveWithinRoot } from '../utils/safe-path';
 
 /** Priority tier for context file inclusion (lower = higher priority). */
 export type ContextPriorityTier = 1 | 2 | 3 | 4;
@@ -89,23 +90,61 @@ function getGitDiff(filePath: string, basePath: string): string {
     const gitDir = path.join(basePath, '.git');
     if (!fs.existsSync(gitDir)) return '';
 
-    const rel = path.relative(basePath, filePath);
-    return execSync(`git diff -- "${rel}"`, { cwd: basePath, encoding: 'utf-8', timeout: 5000 }).trim();
+    const resolvedFile = path.isAbsolute(filePath)
+      ? filePath
+      : resolveWithinRoot(basePath, filePath);
+    const rel = path.relative(basePath, resolvedFile);
+    // Use argv form — never interpolate user paths into a shell string.
+    return execFileSync('git', ['diff', '--', rel], {
+      cwd: basePath,
+      encoding: 'utf-8',
+      timeout: 5000,
+    }).trim();
   } catch {
     return '';
   }
 }
 
 /** Build file/diff entries from a single path. */
+function isUnderRoot(root: string, candidate: string): boolean {
+  const resolveReal = (target: string): string => {
+    const resolved = path.resolve(target);
+    try {
+      return fs.realpathSync(resolved);
+    } catch {
+      return resolved;
+    }
+  };
+  const rel = path.relative(resolveReal(root), resolveReal(candidate));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
 function buildFileEntry(
   filePath: string,
   basePath: string,
   request: ContextScopeRequest
 ): { rel: string; fileEntry: string; diffEntry?: string; symbols: string[] } | null {
-  const resolved = path.isAbsolute(filePath) ? filePath : path.join(basePath, filePath);
+  let resolved: string;
+  if (path.isAbsolute(filePath)) {
+    resolved = path.resolve(filePath);
+    const workRoot = process.env.AGENTHUB_WORK_DIR
+      ? path.resolve(process.env.AGENTHUB_WORK_DIR)
+      : path.join(process.cwd(), '.agenthub-work');
+    if (!isUnderRoot(basePath, resolved) && !isUnderRoot(workRoot, resolved)) {
+      return null;
+    }
+  } else {
+    try {
+      resolved = resolveWithinRoot(basePath, filePath);
+    } catch {
+      return null;
+    }
+  }
   if (!fs.existsSync(resolved)) return null;
 
-  const rel = path.relative(basePath, resolved);
+  const rel = isUnderRoot(basePath, resolved)
+    ? path.relative(path.resolve(basePath), resolved)
+    : path.basename(resolved);
   if (isExcludedContextPath(rel)) return null;
 
   const content = readFileSafe(resolved);

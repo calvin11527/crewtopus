@@ -1,7 +1,7 @@
 {
   "name": "crewtopus",
   "version": "0.1.0",
-  "description": "Crewtopus — many AI arms, one sprint crew. Local multi-agent orchestration.",
+  "description": "Crewtopus \u2014 many AI arms, one sprint crew. Local multi-agent orchestration.",
   "license": "MIT",
   "private": true,
   "repository": {
@@ -55,5 +55,17 @@
   },
   "dependencies": {
     "playwright": "^1.61.1"
+  },
+  "overrides": {
+    "shell-quote": "1.8.4",
+    "js-yaml": "4.2.0",
+    "dompurify": "3.4.12",
+    "esbuild": "0.28.1",
+    "uuid": "11.1.1",
+    "vite": "6.4.3",
+    "vitest": "3.2.6",
+    "monaco-editor": {
+      "dompurify": "3.4.12"
+    }
   }
 }

@@ -73,16 +73,25 @@ export function isPlaceholderSecret(value: string): boolean {
   if (/^(null|none|undefined|true|false|todo|tbd|n\/a|na)$/i.test(rhs)) return true;
 
   // Common doc placeholders
+  const lower = rhs.toLowerCase();
+  const placeholderTokens = [
+    'your_', 'your-', 'my_', 'my-', 'example', 'sample', 'dummy', 'placeholder',
+    'changeme', 'replace', 'insert', 'paste', 'xxx', 'yyy', 'zzz', 'foo', 'bar',
+    'baz', 'qux', 'test_key', 'test-key', 'api_key_here', 'apikeyhere',
+  ];
+  if (placeholderTokens.some((t) => lower.includes(t))) return true;
+  if (lower.endsWith('_here') || lower.endsWith('-here')) return true;
+  // Bracketed fillers like <paste> or {KEY} without nested quantifiers
   if (
-    /your[_-]?|my[_-]?|example|sample|dummy|placeholder|changeme|replace|insert|paste|xxx+|yyy+|zzz+|foo|bar|baz|qux|test[_-]?key|api[_-]?key[_-]?here|_here$|<.*>|\{.*\}|\[.*\]/i.test(
-      rhs
-    )
+    (rhs.startsWith('<') && rhs.endsWith('>')) ||
+    (rhs.startsWith('{') && rhs.endsWith('}')) ||
+    (rhs.startsWith('[') && rhs.endsWith(']'))
   ) {
     return true;
   }
 
-  // sk- followed only by obvious fake chars
-  if (/^sk-(?:test|demo|fake|xxx)/i.test(rhs)) return true;
+  // Only skip clearly fake short OpenAI-style placeholders (not sk-test + long random used in tests)
+  if (/^sk-(?:xxx+|test-?x+|demo-?x+|fake-?x+)$/i.test(rhs)) return true;
 
   return false;
 }
@@ -301,10 +310,12 @@ export function runPrivacyGuard(
   const matches: SecretMatch[] = [];
   const blockedReasons: string[] = [];
 
-  for (let i = 0; i < scope.files.length; i++) {
+  const maxFiles = Math.min(scope.files.length, 5_000);
+  const maxDiffs = Math.min(scope.diffs.length, 5_000);
+  for (let i = 0; i < maxFiles; i++) {
     matches.push(...scanForSecrets(scope.files[i], `files[${i}]`));
   }
-  for (let i = 0; i < scope.diffs.length; i++) {
+  for (let i = 0; i < maxDiffs; i++) {
     matches.push(...scanForSecrets(scope.diffs[i], `diffs[${i}]`));
   }
 

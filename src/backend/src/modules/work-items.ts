@@ -18,6 +18,7 @@ import { broadcast } from '../websocket';
 import { logWorkItemActivity, listWorkItemActivity } from './work-item-activity';
 import { getEmployment } from './agent-employment';
 import { resolveSkillDefinition } from './agent-skills';
+import { resolveWithinRoot } from '../utils/safe-path';
 
 const BOARD_COLUMNS: WorkItemStatus[] = ['backlog', 'todo', 'in_progress', 'in_review', 'done'];
 
@@ -44,10 +45,19 @@ export interface WorkDirFileSnapshot {
 
 export function listFilesInDir(dir?: string): string[] {
   if (!dir || !fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((name) => !name.startsWith('._') && !AGENT_OUTPUT_SKIP.has(name))
-    .filter((name) => fs.statSync(path.join(dir, name)).isFile());
+  const names: string[] = [];
+  for (const name of fs.readdirSync(dir)) {
+    if (name.startsWith('._') || AGENT_OUTPUT_SKIP.has(name)) continue;
+    // reject path separators in entry names
+    if (name.includes('/') || name.includes('\\') || name.includes('..')) continue;
+    try {
+      const full = resolveWithinRoot(dir, name);
+      if (fs.statSync(full).isFile()) names.push(name);
+    } catch {
+      /* skip unsafe names */
+    }
+  }
+  return names;
 }
 
 export function snapshotWorkDirFiles(dir?: string): Map<string, WorkDirFileSnapshot> {
@@ -56,7 +66,13 @@ export function snapshotWorkDirFiles(dir?: string): Map<string, WorkDirFileSnaps
 
   for (const name of fs.readdirSync(dir)) {
     if (name.startsWith('._') || AGENT_OUTPUT_SKIP.has(name)) continue;
-    const full = path.join(dir, name);
+    if (name.includes('/') || name.includes('\\') || name.includes('..')) continue;
+    let full: string;
+    try {
+      full = resolveWithinRoot(dir, name);
+    } catch {
+      continue;
+    }
     const st = fs.statSync(full);
     if (!st.isFile()) continue;
     snap.set(name, { mtimeMs: st.mtimeMs, size: st.size });
