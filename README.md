@@ -125,6 +125,12 @@ Frontend (React)  ──REST/WS──▶  Backend (Express)
                                     └── SQLite + optional Redis
 ```
 
+## Documentation / Wiki
+
+- **[GitHub Wiki](https://github.com/calvin11527/crewtopus/wiki)** — Getting Started, Architecture, Agents, Lifecycle, Config, Security, Troubleshooting
+- Source of truth for wiki pages: [`docs/wiki/`](./docs/wiki/)
+- Repo docs: [src/README.md](./src/README.md) · [SECURITY.md](./SECURITY.md)
+
 ## Contributing
 
 Issues and PRs welcome. Please:
