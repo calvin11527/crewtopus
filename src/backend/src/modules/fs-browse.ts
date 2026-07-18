@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { resolveWithinRoot } from '../utils/safe-path';
 
 export interface FsDirectoryEntry {
   name: string;
@@ -89,7 +90,11 @@ export function isPathAllowed(targetPath: string): boolean {
 }
 
 function hasGitRepo(dirPath: string): boolean {
-  return fs.existsSync(path.join(dirPath, '.git'));
+  try {
+    return fs.existsSync(resolveWithinRoot(dirPath, '.git'));
+  } catch {
+    return false;
+  }
 }
 
 function listChildDirectories(dirPath: string): FsDirectoryEntry[] {
@@ -99,7 +104,12 @@ function listChildDirectories(dirPath: string): FsDirectoryEntry[] {
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith('.')) continue;
 
-    const fullPath = path.join(dirPath, entry.name);
+    let fullPath: string;
+    try {
+      fullPath = resolveWithinRoot(dirPath, entry.name);
+    } catch {
+      continue;
+    }
     if (!isPathAllowed(fullPath)) continue;
 
     entries.push({

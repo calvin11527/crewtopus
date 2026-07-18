@@ -1,10 +1,11 @@
 import fs from 'fs';
 import path from 'path';
+import { resolveWithinRoot } from '../utils/safe-path';
 import { execSync } from 'child_process';
 import type { OnUnknownVerdict, WorkflowVerdictParser } from '../types';
 import type { WorkItem } from '../types';
 import { listFilesInDir } from './work-items';
-import { resolveWorkItemWorkDir } from './work-item-context';
+import { hasLinkedRepository, resolveWorkItemWorkDir } from './work-item-context';
 
 export type ReviewVerdict = 'approved' | 'changes_requested' | 'unknown';
 
@@ -87,7 +88,7 @@ function readWorkDirText(workDir?: string): string {
   return listFilesInDir(workDir)
     .map((name) => {
       try {
-        return fs.readFileSync(path.join(workDir, name), 'utf-8');
+        return fs.readFileSync(resolveWithinRoot(workDir, name), 'utf-8');
       } catch {
         return '';
       }
@@ -116,7 +117,14 @@ function evalFileExists(evalDef: LoopEval, ctx: EvalContext): EvalResult {
     return { evalId: evalDef.id, type: evalDef.type, passed: false, details: 'file_exists eval missing config.file' };
   }
   const workDir = ctx.workDir;
-  const exists = workDir ? fs.existsSync(path.join(workDir, file)) : false;
+  let exists = false;
+  if (workDir) {
+    try {
+      exists = fs.existsSync(resolveWithinRoot(workDir, file));
+    } catch {
+      exists = false;
+    }
+  }
   return {
     evalId: evalDef.id,
     type: evalDef.type,
@@ -189,10 +197,7 @@ function evalTestCommand(evalDef: LoopEval, ctx: EvalContext): EvalResult {
 
   let cwd = (evalDef.config?.cwd as string) || ctx.workDir || process.cwd();
   if (useRepoRoot && ctx.workItem) {
-    const repoRoot = resolveWorkItemWorkDir(ctx.workItem);
-    if (repoRoot) {
-      cwd = repoRoot;
-    } else if (skipIfNoRepo) {
+    if (!hasLinkedRepository(ctx.workItem) && skipIfNoRepo) {
       return {
         evalId: evalDef.id,
         type: evalDef.type,
@@ -201,6 +206,8 @@ function evalTestCommand(evalDef: LoopEval, ctx: EvalContext): EvalResult {
         evidence: { command, skipped: true },
       };
     }
+    const repoRoot = resolveWorkItemWorkDir(ctx.workItem);
+    if (repoRoot) cwd = repoRoot;
   }
 
   if (!command) {

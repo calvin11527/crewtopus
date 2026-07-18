@@ -1,6 +1,7 @@
 import { getDatabase } from '../database';
 import type { Agent, AgentType, AgentStatus } from '../types';
 import { generateId, now, parseJson } from '../utils/helpers';
+import { mergeSafeConfig } from '../utils/safe-path';
 import { broadcast } from '../websocket';
 
 interface AgentRow {
@@ -147,12 +148,7 @@ export function updateAgentConfig(
   const agent = getAgent(id);
   if (!agent) return null;
 
-  const merged: Record<string, unknown> = { ...agent.config, ...config };
-  for (const [key, value] of Object.entries(config)) {
-    if (value === null) {
-      delete merged[key];
-    }
-  }
+  const merged = mergeSafeConfig(agent.config, config);
   getDatabase().prepare('UPDATE agent SET config = ? WHERE id = ?').run(JSON.stringify(merged), id);
   return { ...agent, config: merged };
 }
@@ -215,10 +211,7 @@ export function updateAgent(id: string, updates: UpdateAgentInput): Agent | null
 
   let nextConfig: Record<string, unknown> = { ...agent.config };
   if (updates.config) {
-    nextConfig = { ...nextConfig, ...updates.config };
-    for (const [key, value] of Object.entries(updates.config)) {
-      if (value === null) delete nextConfig[key];
-    }
+    nextConfig = mergeSafeConfig(nextConfig, updates.config);
   }
 
   if (typeChanged) {

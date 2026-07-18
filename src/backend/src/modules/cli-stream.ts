@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import type { AgentType } from '../types';
 import { now } from '../utils/helpers';
+import { resolveWithinRoot, sanitizePathId } from '../utils/safe-path';
 import { broadcast } from '../websocket';
 
 export interface SpawnCliOptions {
@@ -56,7 +57,8 @@ function resolveStreamLogDir(): string {
 }
 
 function streamLogPath(workItemId: string): string {
-  return path.join(resolveStreamLogDir(), `${workItemId}.log`);
+  const safeId = sanitizePathId(workItemId);
+  return resolveWithinRoot(resolveStreamLogDir(), `${safeId}.log`);
 }
 
 function refreshStreamLogBytes(workItemId: string): number {
@@ -77,8 +79,6 @@ function refreshStreamLogBytes(workItemId: string): number {
 
 function rotateStreamLog(workItemId: string): void {
   const logPath = streamLogPath(workItemId);
-  if (!fs.existsSync(logPath)) return;
-
   try {
     const content = fs.readFileSync(logPath, 'utf-8');
     const tail = content.slice(-MAX_RING_CHARS);
@@ -254,24 +254,31 @@ export function getCliOutputForWorkItem(workItemId: string): CliOutputSnapshot |
   let stdout = ring?.stdout ?? '';
   let stderr = ring?.stderr ?? '';
 
-  if ((!stdout && !stderr) && fs.existsSync(logPath)) {
+  if (!stdout && !stderr) {
     try {
       const content = fs.readFileSync(logPath, 'utf-8');
-      const tail = content.slice(-MAX_RING_CHARS);
-      stdout = tail;
+      stdout = content.slice(-MAX_RING_CHARS);
     } catch {
-      /* ignore */
+      /* no log file */
     }
   }
 
-  if (!stdout && !stderr && !fs.existsSync(logPath)) return null;
+  if (!stdout && !stderr) return null;
+
+  let hasLog = false;
+  try {
+    fs.accessSync(logPath);
+    hasLog = true;
+  } catch {
+    hasLog = false;
+  }
 
   return {
     workItemId,
     stdout,
     stderr,
     updatedAt: ring?.updatedAt ?? now(),
-    logPath: fs.existsSync(logPath) ? logPath : undefined,
+    logPath: hasLog ? logPath : undefined,
   };
 }
 
@@ -284,7 +291,13 @@ export function cleanupStreamLogs(maxAgeMs = 24 * 60 * 60 * 1000): number {
   try {
     for (const name of fs.readdirSync(dir)) {
       if (!name.endsWith('.log')) continue;
-      const filePath = path.join(dir, name);
+      if (name.includes('..') || name.includes('/') || name.includes('\\')) continue;
+      let filePath: string;
+      try {
+        filePath = resolveWithinRoot(dir, name);
+      } catch {
+        continue;
+      }
       try {
         const stat = fs.statSync(filePath);
         if (stat.mtimeMs < cutoff) {
