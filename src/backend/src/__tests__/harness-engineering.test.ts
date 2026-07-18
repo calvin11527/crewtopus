@@ -270,14 +270,23 @@ describe('Harness Engineering (AH-40)', () => {
   });
 
   it('prioritizes loop delta files in tier-1 group', () => {
-    const since = Date.now();
+    // Use explicit mtimes — CI filesystems often have 1s resolution, so
+    // Date.now() right before write can be > mtimeMs and flakily exclude the file.
     const deltaFile = path.join(tmpDir, 'improvements.md');
     const staleFile = path.join(tmpDir, 'old-notes.md');
     fs.writeFileSync(staleFile, '# Old');
     fs.writeFileSync(deltaFile, '# New');
 
+    const now = Date.now();
+    const since = now - 5_000;
+    const staleAt = new Date(since - 5_000);
+    const freshAt = new Date(now);
+    fs.utimesSync(staleFile, staleAt, staleAt);
+    fs.utimesSync(deltaFile, freshAt, freshAt);
+
     const deltaPaths = listWorkDirDeltaFiles(tmpDir, since);
     expect(deltaPaths.some((p) => p.endsWith('improvements.md'))).toBe(true);
+    expect(deltaPaths.some((p) => p.endsWith('old-notes.md'))).toBe(false);
 
     const item = createWorkItem({ type: 'task', title: 'Delta test' });
     const { groups } = buildWorkItemContextGroups(item, tmpDir, {
