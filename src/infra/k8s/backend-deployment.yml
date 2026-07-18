@@ -1,0 +1,102 @@
+###############################################################################
+# AgentHub – Backend Deployment & Service (Kubernetes)
+###############################################################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agenthub-backend
+  namespace: agent-hub
+  labels:
+    app: agenthub-backend
+    app.kubernetes.io/part-of: agent-hub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agenthub-backend
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: agenthub-backend
+        app.kubernetes.io/part-of: agent-hub
+    spec:
+      containers:
+        - name: backend
+          image: agenthub-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "3000"
+            - name: NODE_ENV
+              value: "production"
+            - name: OLLAMA_HOST
+              value: "http://ollama.agent-hub.svc.cluster.local:11434"
+            - name: OLLAMA_MODEL
+              value: "gemma4:26b-mlx"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: backend-data
+              mountPath: /app/data
+      volumes:
+        - name: backend-data
+          persistentVolumeClaim:
+            claimName: backend-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-pvc
+  namespace: agent-hub
+  labels:
+    app: agenthub-backend
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agenthub-backend
+  namespace: agent-hub
+  labels:
+    app: agenthub-backend
+    app.kubernetes.io/part-of: agent-hub
+spec:
+  type: LoadBalancer
+  selector:
+    app: agenthub-backend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP

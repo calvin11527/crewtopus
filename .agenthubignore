@@ -1,0 +1,13 @@
+# Secrets and local config — never send to outbound agents
+.env
+.env.*
+*.pem
+*.key
+secrets/
+.credentials/
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+coverage/

@@ -1,0 +1,17 @@
+###############################################################################
+# AgentHub – Grafana Dashboard Provisioning
+###############################################################################
+apiVersion: 1
+
+providers:
+  - name: "AgentHub Dashboards"
+    orgId: 1
+    folder: "AgentHub"
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

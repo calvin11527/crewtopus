@@ -1,0 +1,201 @@
+###############################################################################
+# AgentHub – Docker Compose (full stack)
+###############################################################################
+
+x-common: &common
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  # ---------------------------------------------------------------------------
+  # AgentHub Backend – API + WebSocket + SQLite
+  # ---------------------------------------------------------------------------
+  agenthub-backend:
+    <<: *common
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    image: agenthub-backend:latest
+    container_name: agenthub-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=gemma4:26b-mlx
+    volumes:
+      - backend-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      ollama:
+        condition: service_started
+    networks:
+      - agenthub
+
+  # ---------------------------------------------------------------------------
+  # AgentHub Frontend – React UI (nginx)
+  # ---------------------------------------------------------------------------
+  agenthub-frontend:
+    <<: *common
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    image: agenthub-frontend:latest
+    container_name: agenthub-frontend
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      agenthub-backend:
+        condition: service_healthy
+    networks:
+      - agenthub
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 – caching / pub-sub / session store
+  # ---------------------------------------------------------------------------
+  redis:
+    <<: *common
+    image: redis:7-alpine
+    container_name: agenthub-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - agenthub
+
+  # ---------------------------------------------------------------------------
+  # Ollama – local LLM inference
+  # ---------------------------------------------------------------------------
+  ollama:
+    <<: *common
+    image: ollama/ollama:latest
+    container_name: agenthub-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    # GPU passthrough (uncomment on Linux with NVIDIA GPU)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - agenthub
+
+  # ---------------------------------------------------------------------------
+  # Prometheus – metrics collection
+  # ---------------------------------------------------------------------------
+  prometheus:
+    <<: *common
+    image: prom/prometheus:v2.53.0
+    container_name: agenthub-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus-data:/prometheus
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - agenthub
+
+  # ---------------------------------------------------------------------------
+  # Grafana – dashboards & visualization
+  # ---------------------------------------------------------------------------
+  grafana:
+    <<: *common
+    image: grafana/grafana:11.1.0
+    container_name: agenthub-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_HTTP_PORT=3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      agenthub-backend:
+        condition: service_healthy
+    networks:
+      - agenthub
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  backend-data:
+    driver: local
+  redis-data:
+    driver: local
+  ollama-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  agenthub:
+    driver: bridge
+    name: agenthub

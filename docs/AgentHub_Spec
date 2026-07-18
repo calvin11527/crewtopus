@@ -1,0 +1,1003 @@
+# AgentHub
+
+## Multi-Agent AI Orchestration Desktop Platform
+
+Version: 1.0
+
+Status: Architecture & Implementation Specification
+
+---
+
+# 1. Executive Summary
+
+AgentHub is a privacy-first desktop platform that orchestrates multiple AI coding agents and AI assistants through a unified workflow engine.
+
+The platform enables:
+
+* Claude Code CLI
+* Grok CLI
+* GitHub Copilot CLI
+* Antigravity CLI
+* Local Ollama Agents
+* Future MCP-compatible Agents
+
+to collaborate on software development tasks while maintaining strict control over source code exposure.
+
+AgentHub is designed as a workflow orchestration platform rather than a chat application.
+
+---
+
+# 2. Product Vision
+
+## Problem Statement
+
+Developers currently use multiple AI coding assistants independently.
+
+Problems:
+
+* Context switching between tools
+* Duplicate work
+* No coordinated workflow
+* No centralized audit trail
+* Limited privacy control
+* No proactive automation
+
+## Solution
+
+AgentHub provides:
+
+* Multi-agent coordination
+* Privacy-aware context management
+* Workflow automation
+* Audit logging
+* Proactive monitoring
+* Local-first architecture
+
+---
+
+# 3. User Requirements Specification
+
+## User Persona 1: Solo Developer
+
+### Goals
+
+* Use multiple AI tools together
+* Reduce manual coordination
+* Control data exposure
+* Improve development productivity
+
+### Requirements
+
+Must be able to:
+
+* Connect multiple AI agents
+* Create projects/workspaces
+* Route tasks to specific agents
+* Review agent conversations
+* Approve outgoing context
+* View audit logs
+
+---
+
+## User Persona 2: Technical Architect
+
+### Goals
+
+* Compare AI recommendations
+* Perform architecture reviews
+* Coordinate implementation workflows
+
+### Requirements
+
+Must be able to:
+
+* Create workflows
+* Configure agent responsibilities
+* Run consensus reviews
+* Store architectural decisions
+
+---
+
+## User Persona 3: Privacy-Conscious Developer
+
+### Goals
+
+* Prevent unnecessary source exposure
+
+### Requirements
+
+Must be able to:
+
+* Restrict agent access
+* Configure permissions
+* Review outbound data
+* Block sensitive content
+* Route sensitive tasks locally
+
+---
+
+# 4. Functional Specification
+
+---
+
+## Module A: Workspace Management
+
+### Description
+
+Workspace is the primary operating unit.
+
+### Features
+
+Create Workspace
+
+Open Workspace
+
+Delete Workspace
+
+Manage Repositories
+
+Configure Agents
+
+Configure Workflows
+
+Configure Privacy Policies
+
+### Acceptance Criteria
+
+Given a user creates a workspace
+
+When a repository is attached
+
+Then the workspace stores:
+
+* repository metadata
+* workflow configuration
+* audit history
+* permissions
+
+---
+
+## Module B: Agent Registry
+
+### Description
+
+Maintains available agents.
+
+### Supported Agents
+
+Claude Code CLI
+
+Grok CLI
+
+Copilot CLI
+
+Antigravity CLI
+
+Ollama
+
+Future Plugins
+
+### Features
+
+Register Agent
+
+Enable Agent
+
+Disable Agent
+
+View Status
+
+View Capabilities
+
+### Acceptance Criteria
+
+Agent registration must be dynamic.
+
+New agents must not require application recompilation.
+
+---
+
+## Module C: Capability Registry
+
+### Description
+
+Defines what an agent can do.
+
+### Example
+
+```yaml
+claude:
+  capabilities:
+    - planning
+    - review
+    - architecture
+
+copilot:
+  capabilities:
+    - implementation
+    - testing
+
+grok:
+  capabilities:
+    - research
+    - analysis
+```
+
+### Acceptance Criteria
+
+Routing logic must use capability metadata.
+
+---
+
+## Module D: Workflow Engine
+
+### Description
+
+Workflow execution system.
+
+### Workflow Example
+
+```yaml
+workflow:
+  name: feature-development
+
+  steps:
+
+    - planning:
+        agent: claude
+
+    - implementation:
+        agent: copilot
+
+    - review:
+        agent: grok
+```
+
+### Features
+
+Create Workflow
+
+Edit Workflow
+
+Execute Workflow
+
+Pause Workflow
+
+Resume Workflow
+
+Cancel Workflow
+
+### Acceptance Criteria
+
+Workflow execution must be deterministic.
+
+All transitions must be logged.
+
+---
+
+## Module E: Supervisor Engine
+
+### Description
+
+Central orchestration component.
+
+### Responsibilities
+
+Task decomposition
+
+Agent selection
+
+Execution monitoring
+
+Retry handling
+
+Consensus handling
+
+Approval requests
+
+### Rules
+
+Agents never communicate directly.
+
+All communication flows through supervisor.
+
+### Acceptance Criteria
+
+No agent-to-agent communication bypass.
+
+---
+
+## Module F: ContextScope Builder
+
+### Description
+
+Constructs minimal context sent to agents.
+
+### ContextScope
+
+```typescript
+interface ContextScope {
+  files: string[]
+  diffs: string[]
+  symbols: string[]
+  maxTokens: number
+  sensitivityLevel: number
+}
+```
+
+### Responsibilities
+
+File selection
+
+Diff extraction
+
+Symbol extraction
+
+Token limiting
+
+Sensitivity classification
+
+### Acceptance Criteria
+
+All outbound requests require ContextScope.
+
+---
+
+## Module G: Privacy Guard
+
+### Description
+
+Prevents accidental data leakage.
+
+### Pipeline
+
+Task
+
+↓
+
+ContextScope
+
+↓
+
+Secret Scanner
+
+↓
+
+Path Sanitizer
+
+↓
+
+Policy Engine
+
+↓
+
+Approval Gate
+
+↓
+
+Agent
+
+### Detection Types
+
+API Keys
+
+Passwords
+
+JWT Secrets
+
+Private Keys
+
+Certificates
+
+PII
+
+Environment Variables
+
+### Acceptance Criteria
+
+No outbound request containing secrets is allowed.
+
+---
+
+## Module H: Approval Gate
+
+### Description
+
+User approval system.
+
+### Features
+
+Approve
+
+Reject
+
+Modify Scope
+
+View Diff
+
+### Acceptance Criteria
+
+High sensitivity requests require approval.
+
+---
+
+## Module I: Audit Logger
+
+### Description
+
+Complete system traceability.
+
+### Logged Data
+
+Timestamp
+
+Agent
+
+Workflow
+
+Task
+
+Context Hash
+
+Files
+
+Token Usage
+
+Estimated Cost
+
+Approval Status
+
+Response Metadata
+
+### Acceptance Criteria
+
+All outbound requests are logged.
+
+---
+
+## Module J: Proactive Engine
+
+### Description
+
+Background automation.
+
+### Triggers
+
+File Changed
+
+Git Commit
+
+PR Created
+
+Build Failed
+
+Dependency Updated
+
+Schedule Trigger
+
+### Acceptance Criteria
+
+Triggers must create workflow events.
+
+---
+
+## Module K: Consensus Engine
+
+### Description
+
+Combines multiple agent opinions.
+
+### Modes
+
+Majority Vote
+
+Weighted Vote
+
+Human Review
+
+Single Authority
+
+### Acceptance Criteria
+
+Decision source must be traceable.
+
+---
+
+# 5. Technical Specification
+
+---
+
+## Desktop Architecture
+
+```text
+Tauri
+│
+├── React Frontend
+│
+├── Rust Backend
+│
+├── SQLite
+│
+├── Agent Adapters
+│
+├── Workflow Engine
+│
+├── Supervisor
+│
+├── Event Bus
+│
+└── Local Infrastructure
+```
+
+---
+
+## Technology Stack
+
+### Frontend
+
+React
+
+TypeScript
+
+Vite
+
+TanStack Query
+
+Zustand
+
+Monaco Editor
+
+xterm.js
+
+### Backend
+
+Rust
+
+Tauri
+
+Tokio
+
+Serde
+
+SQLx
+
+### Storage
+
+SQLite
+
+Future:
+
+LanceDB
+
+sqlite-vec
+
+### Local Infrastructure
+
+Docker Desktop
+
+Kubernetes
+
+k3d
+
+Redis
+
+Ollama
+
+Prometheus
+
+Grafana
+
+---
+
+## Local Deployment Architecture
+
+```text
+MacBook
+
+├── AgentHub
+
+├── Docker
+
+├── k3d Cluster
+
+│   ├── Redis
+│   ├── Ollama
+│   ├── LanceDB
+│   ├── MCP Services
+│   └── Observability
+
+└── Local Filesystem
+```
+
+---
+
+## Database Schema
+
+### Workspace
+
+```sql
+workspace(
+  id,
+  name,
+  created_at
+)
+```
+
+### Agent
+
+```sql
+agent(
+  id,
+  name,
+  type,
+  enabled
+)
+```
+
+### Workflow
+
+```sql
+workflow(
+  id,
+  name,
+  definition
+)
+```
+
+### Event
+
+```sql
+event(
+  id,
+  event_type,
+  payload,
+  created_at
+)
+```
+
+### Audit Log
+
+```sql
+audit_log(
+  id,
+  agent_id,
+  context_hash,
+  token_count,
+  cost,
+  timestamp
+)
+```
+
+---
+
+# 6. Non-Functional Requirements
+
+## Performance
+
+Workspace load:
+
+< 2 seconds
+
+Agent response streaming:
+
+< 500ms initial response
+
+Workflow startup:
+
+< 1 second
+
+---
+
+## Reliability
+
+Workflow execution:
+
+99% success
+
+Crash recovery:
+
+automatic
+
+---
+
+## Security
+
+All API keys stored in OS keychain.
+
+Secrets never stored in logs.
+
+Audit logs immutable.
+
+---
+
+## Scalability
+
+Support:
+
+20+ workflows
+
+10+ agents
+
+100k+ audit events
+
+---
+
+# 7. Testing Specification (TDD)
+
+---
+
+## Testing Strategy
+
+Development follows:
+
+Red
+
+Green
+
+Refactor
+
+for every feature.
+
+No feature implemented without tests.
+
+---
+
+## Unit Tests
+
+### Agent Adapter Tests
+
+Verify:
+
+* process launch
+* process shutdown
+* output parsing
+* timeout handling
+
+Example:
+
+```typescript
+it("should launch claude adapter")
+```
+
+---
+
+### ContextScope Tests
+
+Verify:
+
+* file selection
+* token limits
+* diff extraction
+
+Example:
+
+```typescript
+it("should not exceed token budget")
+```
+
+---
+
+### Privacy Guard Tests
+
+Verify:
+
+* API key detection
+* JWT detection
+* PII detection
+
+Example:
+
+```typescript
+it("should block outbound secrets")
+```
+
+---
+
+### Workflow Engine Tests
+
+Verify:
+
+* workflow transitions
+* retry behavior
+* failure handling
+
+Example:
+
+```typescript
+it("should execute workflow in correct order")
+```
+
+---
+
+## Integration Tests
+
+### Agent Pipeline
+
+```text
+Task
+↓
+ContextScope
+↓
+Privacy Guard
+↓
+Agent
+↓
+Audit Logger
+```
+
+Verify end-to-end execution.
+
+---
+
+### Multi-Agent Workflow
+
+Verify:
+
+Planner
+
+↓
+
+Implementer
+
+↓
+
+Reviewer
+
+↓
+
+Tester
+
+workflow execution.
+
+---
+
+### Workspace Tests
+
+Verify:
+
+workspace creation
+
+repository linking
+
+workflow persistence
+
+---
+
+## End-to-End Tests
+
+### User Workflow
+
+Create Workspace
+
+Add Repository
+
+Configure Agents
+
+Create Workflow
+
+Execute Workflow
+
+Review Results
+
+Verify full lifecycle.
+
+---
+
+## Security Tests
+
+### Secret Leakage Tests
+
+Inject:
+
+API Keys
+
+Passwords
+
+JWT Tokens
+
+Private Keys
+
+Verify outbound requests blocked.
+
+---
+
+### Permission Tests
+
+Verify:
+
+agent cannot access unauthorized files.
+
+---
+
+## Load Tests
+
+### Workflow Load
+
+100 concurrent workflows
+
+### Event Load
+
+1 million events
+
+### Audit Load
+
+10 million records
+
+---
+
+## Mock Infrastructure
+
+### Mock Agents
+
+Mock Claude
+
+Mock Grok
+
+Mock Copilot
+
+Mock Antigravity
+
+### Purpose
+
+Prevent API cost during CI.
+
+Allow deterministic testing.
+
+---
+
+# 8. Definition of Done
+
+Feature is complete only when:
+
+* Unit Tests Pass
+* Integration Tests Pass
+* E2E Tests Pass
+* Security Tests Pass
+* Audit Logs Verified
+* Documentation Updated
+* Code Review Approved
+
+No exceptions.
+
+---
+
+# 9. Future Roadmap
+
+## v1
+
+Multi-agent orchestration
+
+Workflow engine
+
+Privacy guard
+
+Audit logging
+
+## v2
+
+Vector memory
+
+Semantic search
+
+Consensus engine
+
+## v3
+
+Proactive automation
+
+Background agents
+
+Scheduled workflows
+
+## v4
+
+Distributed agent clusters
+
+Remote execution
+
+Enterprise deployment
+
+MCP ecosystem support
+
+```
+```

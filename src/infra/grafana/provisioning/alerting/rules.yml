@@ -1,0 +1,243 @@
+###############################################################################
+# AgentHub – Grafana Unified Alerting (Harness metrics)
+###############################################################################
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: agenthub_harness
+    folder: AgentHub
+    interval: 1m
+    rules:
+      - uid: harness_truncation_spike
+        title: Harness Context Truncation Spike
+        condition: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: Context truncation rate elevated
+          description: >-
+            Truncation/drop rate exceeds threshold. Check token budgets and
+            per-iteration context refresh settings.
+        labels:
+          severity: warning
+          component: harness
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(agenthub_context_truncations_total[5m]))
+              intervalMs: 60000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: A
+              refId: B
+              type: threshold
+
+      - uid: harness_fallback_spike
+        title: Harness Agent Fallback Spike
+        condition: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: Agent fallback rate elevated
+          description: >-
+            CLI adapters are substituting mock agents. Verify CLI availability
+            and outbound retry policy.
+        labels:
+          severity: warning
+          component: harness
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(agenthub_agent_fallbacks_total[5m]))
+              intervalMs: 60000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [0.2]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: A
+              refId: B
+              type: threshold
+
+      - uid: harness_loop_escalation_spike
+        title: Loop Escalation Spike
+        condition: B
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: Loop escalation rate elevated
+          description: >-
+            Loops are exhausting budgets or requiring human approval at an
+            elevated rate. Review maxIterations and eval harness config.
+        labels:
+          severity: warning
+          component: loop
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(agenthub_loop_escalations_total[5m]))
+              intervalMs: 60000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [0.1]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: A
+              refId: B
+              type: threshold
+
+      - uid: harness_queue_backlog
+        title: Loop Queue Backlog
+        condition: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: Loop job queue backlog
+          description: Pending loop jobs exceed 10. Investigate stuck workers or pipeline runs.
+        labels:
+          severity: critical
+          component: queue
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: agenthub_queue_depth
+              intervalMs: 60000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [10]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: A
+              refId: B
+              type: threshold
+
+      - uid: harness_privacy_block_spike
+        title: Privacy Guard Block Spike
+        condition: B
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: Privacy guard block rate elevated
+          description: >-
+            Outbound requests are being blocked by the privacy guard faster than
+            expected. Audit work-dir secrets and workspace policies.
+        labels:
+          severity: warning
+          component: privacy
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(agenthub_privacy_blocks_total[5m]))
+              intervalMs: 60000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [0.1]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: A
+              refId: B
+              type: threshold

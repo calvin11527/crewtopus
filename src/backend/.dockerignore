@@ -1,0 +1,10 @@
+node_modules
+dist
+data
+*.db
+*.db-*
+coverage
+__tests__
+*.test.ts
+.env
+.env.*

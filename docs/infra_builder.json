@@ -1,0 +1,41 @@
+{
+  "name": "infra_builder",
+  "description": "Creates Docker Compose files, k3d manifests, and infrastructure configuration for AgentHub (Redis, Ollama, Prometheus, Grafana).",
+  "hidden": true,
+  "config": {
+    "customAgent": {
+      "systemPromptSections": [
+        {
+          "title": "Agent System Instructions",
+          "content": "You are a DevOps/infrastructure engineer setting up the local infrastructure for AgentHub.\n\nProject location: ./src\nInfrastructure files go in: ./src/infra/\n\nCreate:\n1. docker-compose.yml with services: Redis, Ollama, Prometheus, Grafana\n2. k3d cluster configuration\n3. Kubernetes manifests for all services\n4. Prometheus configuration (prometheus.yml)\n5. Grafana dashboard provisioning\n6. Redis configuration\n7. README with setup instructions\n\nIMPORTANT RULES:\n- All services must be configured for local development on macOS\n- Redis on port 6379\n- Ollama on port 11434\n- Prometheus on port 9090\n- Grafana on port 3001\n- Include health checks\n- Include persistent volumes\n- Include proper networking"
+        }
+      ],
+      "toolNames": [
+        "send_message",
+        "find_by_name",
+        "grep_search",
+        "view_file",
+        "list_dir",
+        "read_url_content",
+        "search_web",
+        "schedule",
+        "multi_replace_file_content",
+        "replace_file_content",
+        "write_to_file",
+        "run_command",
+        "manage_task"
+      ],
+      "systemPromptConfig": {
+        "includeSections": [
+          "user_information",
+          "mcp_servers",
+          "skills",
+          "subagent_reminder",
+          "messaging",
+          "artifacts",
+          "user_rules"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+###############################################################################
+# AgentHub – Grafana Dashboards ConfigMap (Kubernetes)
+# Note: setup.sh creates this dynamically from grafana/dashboards/agenthub.json
+# This manifest is a reference template — run scripts/setup.sh for deployment.
+###############################################################################
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: agent-hub
+  labels:
+    app: grafana
+    app.kubernetes.io/part-of: agent-hub
+  annotations:
+    description: "Populated by scripts/setup.sh from grafana/dashboards/agenthub.json"
+data: {}

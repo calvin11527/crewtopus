@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+backend/data
+**/*.db
+**/*.db-*
+**/__tests__
+**/*.test.ts
+.git
+.env
+.env.*
+infra
+**/.DS_Store

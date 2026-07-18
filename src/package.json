@@ -1,0 +1,59 @@
+{
+  "name": "crewtopus",
+  "version": "0.1.0",
+  "description": "Crewtopus — many AI arms, one sprint crew. Local multi-agent orchestration.",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/calvin11527/crewtopus.git"
+  },
+  "bugs": {
+    "url": "https://github.com/calvin11527/crewtopus/issues"
+  },
+  "homepage": "https://github.com/calvin11527/crewtopus#readme",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "cd backend && npm run test",
+    "test:frontend": "cd frontend && npm run test",
+    "test:epic": "node scripts/test-epic-workflow.mjs",
+    "test:single-story": "node scripts/test-single-story.mjs",
+    "test:story-queue": "node scripts/test-story-queue.mjs",
+    "test:automation": "npm run test:single-story && npm run test:story-queue && npm run test:epic",
+    "test:cli-stream": "node scripts/test-cli-stream.mjs",
+    "docker:build": "cd infra && ./scripts/setup.sh build",
+    "docker:up": "cd infra && ./scripts/setup.sh compose",
+    "docker:down": "cd infra && ./scripts/setup.sh compose-down",
+    "k8s:up": "cd infra && ./scripts/setup.sh",
+    "k8s:deploy": "cd infra && ./scripts/setup.sh deploy",
+    "k8s:down": "cd infra && ./scripts/setup.sh destroy",
+    "k8s:status": "cd infra && ./scripts/setup.sh status",
+    "k8s:local-agents": "cd infra && ./scripts/local-agents.sh start",
+    "k8s:local-agents:stop": "cd infra && ./scripts/local-agents.sh stop",
+    "stack:test": "cd infra && ./scripts/test-stack.sh",
+    "infra:up": "npm run docker:up",
+    "infra:down": "npm run docker:down",
+    "infra:logs": "cd infra && docker compose logs -f",
+    "infra:pull-models": "cd infra && chmod +x scripts/pull-recommended-models.sh && ./scripts/pull-recommended-models.sh",
+    "clean": "rm -rf node_modules backend/node_modules frontend/node_modules backend/dist frontend/dist"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "playwright": "^1.61.1"
+  }
+}

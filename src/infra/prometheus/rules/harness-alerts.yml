@@ -1,0 +1,66 @@
+###############################################################################
+# AgentHub – Harness & Loop Alert Rules (Prometheus)
+###############################################################################
+groups:
+  - name: agenthub_harness
+    interval: 1m
+    rules:
+      - alert: AgentHubContextTruncationSpike
+        expr: sum(rate(agenthub_context_truncations_total[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: harness
+        annotations:
+          summary: "Context truncation rate elevated"
+          description: >-
+            AgentHub is truncating or dropping context files faster than 0.5/s
+            (5m rate). Review token budgets and work-dir delta selection.
+
+      - alert: AgentHubAgentFallbackSpike
+        expr: sum(rate(agenthub_agent_fallbacks_total[5m])) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          component: harness
+        annotations:
+          summary: "Agent fallback rate elevated"
+          description: >-
+            CLI agents are falling back to mock faster than 0.2/s. Check adapter
+            availability and AGENTHUB_DISABLE_MOCK_FALLBACK policy.
+
+      - alert: AgentHubLoopEscalationSpike
+        expr: sum(rate(agenthub_loop_escalations_total[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: loop
+        annotations:
+          summary: "Loop escalation rate elevated"
+          description: >-
+            Loops are exhausting iteration budgets or hitting human-approval
+            escalation faster than 0.1/s. Review maxIterations and eval criteria.
+
+      - alert: AgentHubLoopQueueBacklog
+        expr: agenthub_queue_depth > 10
+        for: 5m
+        labels:
+          severity: critical
+          component: queue
+        annotations:
+          summary: "Loop job queue backlog"
+          description: >-
+            Pending loop jobs (agenthub_queue_depth) exceed 10 for 5 minutes.
+            Scale workers or investigate stuck pipeline runs.
+
+      - alert: AgentHubPrivacyBlockSpike
+        expr: sum(rate(agenthub_privacy_blocks_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: privacy
+        annotations:
+          summary: "Privacy guard block rate elevated"
+          description: >-
+            Outbound requests are being blocked by the privacy guard faster than
+            0.1/s. Audit work-dir secrets and workspace policies.

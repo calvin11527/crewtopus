@@ -1,0 +1,54 @@
+###############################################################################
+# AgentHub – k3d Cluster Configuration
+###############################################################################
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: agenthub
+servers: 1
+agents: 1
+image: rancher/k3s:v1.30.2-k3s1
+
+ports:
+  # Redis
+  - port: 6379:6379
+    nodeFilters:
+      - loadbalancer
+  # Ollama
+  - port: 11434:11434
+    nodeFilters:
+      - loadbalancer
+  # Prometheus
+  - port: 9090:9090
+    nodeFilters:
+      - loadbalancer
+  # Grafana
+  - port: 3001:3001
+    nodeFilters:
+      - loadbalancer
+  # AgentHub backend
+  - port: 3000:3000
+    nodeFilters:
+      - loadbalancer
+  # AgentHub frontend (nginx)
+  - port: 8080:80
+    nodeFilters:
+      - loadbalancer
+
+options:
+  k3d:
+    wait: true
+    timeout: "120s"
+  k3s:
+    extraArgs:
+      - arg: "--disable=traefik"
+        nodeFilters:
+          - server:*
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true
+
+volumes:
+  - volume: /tmp/agenthub-k3d-storage:/var/lib/rancher/k3s/storage
+    nodeFilters:
+      - all

@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+backend/dist/
+frontend/dist/
+*.tsbuildinfo
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Local database & runtime data
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+backend/data/
+
+# Agent-generated work
+.agenthub-work/
+**/.agenthub-work/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test & coverage
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# UI check screenshots
+scripts/ui-screenshots/
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# Caches
+.turbo/
+.cache/
+.vite/
