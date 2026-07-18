@@ -10,14 +10,14 @@
     "test": "jest"
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "^12.11.1",
     "chokidar": "^3.6.0",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "node-cron": "^3.0.3",
     "redis": "^4.7.0",
     "uuid": "^9.0.1",
-    "ws": "^8.16.0"
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.9",
