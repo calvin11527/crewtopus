@@ -6,7 +6,7 @@ import type { ContextScope } from '../types';
 import { estimateTokens } from '../adapters/base';
 import { scanForSecrets } from './privacy-guard';
 import { isExcludedContextPath } from './context-path-filters';
-import { resolveWithinRoot } from '../utils/safe-path';
+import { resolveWithinRoot, isPathInside, sanitizeForLog } from '../utils/safe-path';
 
 /** Priority tier for context file inclusion (lower = higher priority). */
 export type ContextPriorityTier = 1 | 2 | 3 | 4;
@@ -107,16 +107,7 @@ function getGitDiff(filePath: string, basePath: string): string {
 
 /** Build file/diff entries from a single path. */
 function isUnderRoot(root: string, candidate: string): boolean {
-  const resolveReal = (target: string): string => {
-    const resolved = path.resolve(target);
-    try {
-      return fs.realpathSync(resolved);
-    } catch {
-      return resolved;
-    }
-  };
-  const rel = path.relative(resolveReal(root), resolveReal(candidate));
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  return isPathInside(root, candidate);
 }
 
 function buildFileEntry(

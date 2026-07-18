@@ -67,10 +67,22 @@ export function isPlaceholderSecret(value: string): boolean {
   rhs = rhs.replace(/^['"`]+|['"`]+$/g, '').trim();
 
   if (!rhs) return true;
-  // Too short / obvious fillers
+  // Too short / obvious fillers (avoid nested quantifiers for ReDoS safety)
   if (rhs.length < 8) return true;
-  if (/^(x+|y+|z+|\*+|-+|\.+)$/i.test(rhs)) return true;
-  if (/^(null|none|undefined|true|false|todo|tbd|n\/a|na)$/i.test(rhs)) return true;
+  if (/^[xyz*.\-]+$/i.test(rhs)) return true;
+  if (
+    rhs === 'null' ||
+    rhs === 'none' ||
+    rhs === 'undefined' ||
+    rhs === 'true' ||
+    rhs === 'false' ||
+    rhs === 'todo' ||
+    rhs === 'tbd' ||
+    rhs === 'n/a' ||
+    rhs === 'na'
+  ) {
+    return true;
+  }
 
   // Common doc placeholders
   const lower = rhs.toLowerCase();
