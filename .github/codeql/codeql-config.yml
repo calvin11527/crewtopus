@@ -1,0 +1,15 @@
+name: Crewtopus CodeQL config
+
+paths:
+  - src/backend
+  - src/frontend
+  - src/scripts
+
+paths-ignore:
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/__tests__/**"
+  - "docs/**"
+  - "src/infra/**"
