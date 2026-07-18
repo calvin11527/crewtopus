@@ -1,3 +1,4 @@
+# Quiet Dependabot: security + small bumps only. Avoids flooding with major upgrades.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -5,45 +6,31 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
     labels:
       - dependencies
-      - security
     groups:
-      production-deps:
-        dependency-type: production
+      npm-minor-patch:
         update-types:
           - minor
           - patch
-      development-deps:
-        dependency-type: development
-        update-types:
-          - minor
-          - patch
-
-  - package-ecosystem: npm
-    directory: "/src/backend"
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 10
-    labels:
-      - dependencies
-
-  - package-ecosystem: npm
-    directory: "/src/frontend"
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 10
-    labels:
-      - dependencies
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
       day: monday
+    open-pull-requests-limit: 2
     labels:
       - dependencies
       - github-actions
+    groups:
+      actions:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
