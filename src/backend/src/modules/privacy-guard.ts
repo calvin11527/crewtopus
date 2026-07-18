@@ -64,7 +64,13 @@ export function isPlaceholderSecret(value: string): boolean {
 
   const eq = raw.search(/[:=]/);
   let rhs = eq >= 0 ? raw.slice(eq + 1).trim() : raw;
-  rhs = rhs.replace(/^['"`]+|['"`]+$/g, '').trim();
+  while (
+    (rhs.startsWith("'") && rhs.endsWith("'")) ||
+    (rhs.startsWith('"') && rhs.endsWith('"')) ||
+    (rhs.startsWith('`') && rhs.endsWith('`'))
+  ) {
+    rhs = rhs.slice(1, -1).trim();
+  }
 
   if (!rhs) return true;
   // Too short / obvious fillers (avoid nested quantifiers for ReDoS safety)
@@ -103,7 +109,7 @@ export function isPlaceholderSecret(value: string): boolean {
   }
 
   // Only skip clearly fake short OpenAI-style placeholders (not sk-test + long random used in tests)
-  if (/^sk-(?:xxx+|test-?x+|demo-?x+|fake-?x+)$/i.test(rhs)) return true;
+  if (rhs.startsWith('sk-xxx') || rhs.startsWith('sk-test-x') || rhs.startsWith('sk-demo-x')) return true;
 
   return false;
 }

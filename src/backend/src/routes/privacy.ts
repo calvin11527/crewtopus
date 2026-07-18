@@ -1,4 +1,5 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { getDatabase } from '../database';
 import { generateId, now } from '../utils/helpers';
 import {
@@ -12,26 +13,15 @@ import type { AgentType, ContextScope } from '../types';
 
 const router = Router();
 
-/** Simple in-memory rate limiter for privacy endpoints (local-first; per-IP). */
-const rateBuckets = new Map<string, { count: number; resetAt: number }>();
-function rateLimitMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const maxPerMinute = 60;
-  const key = req.ip || req.socket.remoteAddress || 'local';
-  const nowMs = Date.now();
-  let bucket = rateBuckets.get(key);
-  if (!bucket || bucket.resetAt <= nowMs) {
-    bucket = { count: 0, resetAt: nowMs + 60_000 };
-    rateBuckets.set(key, bucket);
-  }
-  bucket.count += 1;
-  if (bucket.count > maxPerMinute) {
-    res.status(429).json({ message: 'Rate limit exceeded. Try again shortly.' });
-    return;
-  }
-  next();
-}
+const privacyLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Rate limit exceeded. Try again shortly.' },
+});
 
-router.use(rateLimitMiddleware);
+router.use(privacyLimiter);
 
 router.post('/scan', (req: Request, res: Response) => {
   const { content, location } = req.body;
