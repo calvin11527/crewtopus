@@ -174,6 +174,6 @@ src/
 
 ## License
 
-[MIT](../LICENSE) — see the repository root for the full license text.
+[PolyForm Noncommercial 1.0.0](../LICENSE) — **non-commercial use only.** See the repository root for the full license text.
 
 For the public project overview, security policy, and environment template, see the [root README](../README.md), [SECURITY.md](../SECURITY.md), and [.env.example](../.env.example).

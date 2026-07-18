@@ -22,7 +22,7 @@ Crewtopus is a local multi-agent orchestration platform: staff AI agents on a Ka
 - [Source repository](https://github.com/calvin11527/crewtopus)
 - [Releases](https://github.com/calvin11527/crewtopus/releases)
 - [SECURITY.md](https://github.com/calvin11527/crewtopus/blob/main/SECURITY.md)
-- [MIT License](https://github.com/calvin11527/crewtopus/blob/main/LICENSE)
+- [PolyForm Noncommercial License](https://github.com/calvin11527/crewtopus/blob/main/LICENSE)
 
 ## One-liner
 
