@@ -15,6 +15,12 @@
   <a href="https://github.com/calvin11527/crewtopus/releases"><img src="https://img.shields.io/github/v/release/calvin11527/crewtopus?include_prereleases" alt="Release" /></a>
 </p>
 
+<p align="center">
+  <img src="docs/assets/crewtopus-demo.gif" alt="Crewtopus demo — dashboard, agent registry, scrum board, and work-item agent console" width="840" />
+</p>
+
+<p align="center"><em>Dashboard → agents → sprint board → work-item console (short walkthrough)</em></p>
+
 > **Security notice:** Crewtopus runs coding agents with broad local tool/filesystem access. Use only on machines and repositories you trust. Do **not** expose the API to the public internet without authentication. See [SECURITY.md](./SECURITY.md).
 
 ## Why Crewtopus?
