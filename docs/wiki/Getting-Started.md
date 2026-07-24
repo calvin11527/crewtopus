@@ -5,23 +5,40 @@
 - **Node.js ≥ 20**
 - **npm**
 - **Docker Desktop** (optional: Redis, Ollama, Prometheus, Grafana)
-- At least one agent CLI (Grok, Copilot, Claude Code, Ollama, …)
+- For real agents: Grok, Copilot, Claude Code, Ollama, etc.  
+  **Not required** for the mock demo path below.
 
-## Install & run
+## Fastest path (mock demo, ~60s)
 
 ```bash
 git clone https://github.com/calvin11527/crewtopus.git
-cd crewtopus
+cd crewtopus/src
+npm run setup
+npm run dev
+```
+
+Second terminal:
+
+```bash
+cd crewtopus/src
+npm run demo
+```
+
+Open **http://localhost:5173/board**, open the new story, watch the console.
+
+Or in the UI: **Scrum Board** → **Multi-agent demo** (mock implement → test → review).
+
+## Install & run (full)
+
+```bash
+git clone https://github.com/calvin11527/crewtopus.git
+cd crewtopus/src
 
 # Optional infrastructure
-cd src
 npm run infra:up
 
-# Dependencies
-npm install
-cd backend && npm install
-cd ../frontend && npm install
-cd ..
+# Dependencies (workspaces)
+npm run setup
 
 # Optional config
 cp ../.env.example .env
@@ -36,9 +53,9 @@ npm run dev
 | API | http://localhost:3000 |
 | Grafana (if infra) | http://localhost:3001 |
 
-## First five minutes
+## First five minutes (real agents)
 
-1. Open **Agents** — hire or configure an agent; set **adapter** (e.g. Grok) and **model**.
+1. Open **Agents** — configure adapter (Grok, Copilot, …) and model.
 2. Open **Workspaces** — create a workspace and link a local project folder.
 3. Open **Board** — create a sprint and **staff** BA, PM, and developer roles.
 4. Add a **story** and run **Full lifecycle**.
@@ -48,13 +65,13 @@ npm run dev
 
 If a provider blocks runs (budget / token limit):
 
-1. Go to **Agent Registry**
-2. Open **Adapter / model** on the staffed agent
-3. Switch provider (e.g. Copilot → Grok or Ollama)
-4. Confirm and save — sprint staffing stays on the same agent id
+1. Open **Agents** for that role.
+2. Change **adapter** (e.g. Copilot → Grok) — same staffed role keeps working.
+3. Re-run the story or pipeline step.
 
 ## Next
 
-- [Sprint Lifecycle](Sprint-Lifecycle)
 - [Agents & Adapters](Agents-and-Adapters)
-- [Configuration](Configuration)
+- [Sprint Lifecycle](Sprint-Lifecycle)
+- [Troubleshooting](Troubleshooting)
+- [Roadmap](https://github.com/calvin11527/crewtopus/blob/main/docs/ROADMAP.md)

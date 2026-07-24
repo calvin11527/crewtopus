@@ -23,6 +23,12 @@ logger.error = (msg, options) => {
 export default defineConfig({
   customLogger: logger,
   plugins: [react()],
+  // Modern target avoids esbuild failures when deps use nested destructuring.
+  esbuild: { target: 'es2022' },
+  build: { target: 'es2022' },
+  optimizeDeps: {
+    esbuildOptions: { target: 'es2022' },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

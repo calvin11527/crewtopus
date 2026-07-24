@@ -1,4 +1,5 @@
-import { Activity, Bot, GitBranch, Shield, Zap, DollarSign } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Activity, Bot, GitBranch, Shield, Zap, DollarSign, Sparkles } from 'lucide-react';
 import { useHealth, useSystemStatus, useAuditStats, useSupervisorStatus, useAgents, useWorkflows } from '../api/hooks';
 import LiveFeed from '../components/LiveFeed';
 import CreditUsage from '../components/CreditUsage';
@@ -21,6 +22,16 @@ export default function Dashboard() {
         <h2>Dashboard</h2>
         <p className="page-subtitle">Multi-agent orchestration command center</p>
       </header>
+
+      <div id="welcome-demo-callout" className="welcome-demo-callout" role="note">
+        <Sparkles size={18} className="welcome-demo-callout__icon" aria-hidden />
+        <div className="welcome-demo-callout__body">
+          <strong>New here?</strong> Open the{' '}
+          <Link to="/board">Scrum Board</Link> and click <strong>Multi-agent demo</strong> — mock
+          implement → test → review with no paid CLIs. Or from a terminal:{' '}
+          <code>cd src && npm run demo</code>
+        </div>
+      </div>
 
       <div className="stats-grid">
         <div id="stat-uptime" className="stat-card">

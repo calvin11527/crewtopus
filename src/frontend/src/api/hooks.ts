@@ -612,6 +612,8 @@ export interface RunPipelineOptions {
   maxIterations?: number;
   autoLoop?: boolean;
   async?: boolean;
+  /** Use mock implement→test→review loop (no paid CLIs). */
+  demo?: boolean;
 }
 
 export interface LoopJob {
@@ -664,11 +666,11 @@ export function useRerunWorkItemReview() {
 export function useRunWorkItemPipeline() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, maxIterations, autoLoop, async: runAsync }: RunPipelineOptions) => {
+    mutationFn: async ({ id, maxIterations, autoLoop, async: runAsync, demo }: RunPipelineOptions) => {
       if (runAsync) {
         return api.post<{ jobId: string; status: string; workItemId: string }>(
           `/work-items/${id}/run-pipeline`,
-          { maxIterations, autoLoop, async: true }
+          { maxIterations, autoLoop, async: true, demo }
         );
       }
       return api.post<{
@@ -679,7 +681,7 @@ export function useRunWorkItemPipeline() {
         loopStatus: LoopStatus;
         evalResults?: EvalResult[];
         loopRunId?: string;
-      }>(`/work-items/${id}/run-pipeline`, { maxIterations, autoLoop });
+      }>(`/work-items/${id}/run-pipeline`, { maxIterations, autoLoop, demo });
     },
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ['work-items'] });

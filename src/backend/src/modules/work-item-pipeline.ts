@@ -197,7 +197,8 @@ export async function runWorkItemPipeline(
 ): Promise<PipelineResult> {
   const item = getWorkItem(id);
   const { workflowId, loop: baseLoop } = options.demo ? getMockDemoLoop() : getGrokCopilotLoop();
-  const loop = applySprintTeamToLoop(baseLoop, item?.sprintId);
+  // Demo mode keeps pure mock agents so quota/CLI issues never block first-run.
+  const loop = options.demo ? baseLoop : applySprintTeamToLoop(baseLoop, item?.sprintId);
   const loopOptions = resolvePipelineLoopOptions(options);
   const result = await runAgentLoop({
     loop,
@@ -206,7 +207,7 @@ export async function runWorkItemPipeline(
     workDir: options.workDir,
     options: loopOptions,
     jobId: options.jobId,
-    executionLabel: 'grok-copilot',
+    executionLabel: options.demo ? 'mock-demo' : 'grok-copilot',
   });
 
   return {
@@ -312,22 +313,22 @@ export function ensureGrokCopilotWorkflow(): string {
 /** @deprecated Use ensureGrokCopilotWorkflow */
 export const ensureGrokClaudeWorkflow = ensureGrokCopilotWorkflow;
 
-/** Create a demo work item for improving AgentHub. */
+/** Create a demo work item for the multi-agent (mock-friendly) pipeline. */
 export function createAgentHubImprovementTask(sprintId?: string): WorkItem {
   return createWorkItem({
     type: 'task',
-    title: 'Improve AgentHub project automatically',
+    title: 'Demo: mock crew suggests project improvements',
     description:
-      'Review the AgentHub codebase and suggest concrete improvements. ' +
-      'Document findings in a markdown file `improvements.md` in the work directory with prioritized recommendations ' +
+      'Welcome multi-agent demo. In mock mode, implement → test → review runs without paid CLIs. ' +
+      'With real adapters, review the codebase and document findings in `improvements.md` ' +
       '(bugs, UX, multi-agent orchestration, tests). Keep changes scoped and safe.',
-    assignedAgentType: 'grok',
+    assignedAgentType: 'mock',
     sprintId,
     status: 'todo',
     acceptanceCriteria: [
-      'improvements.md created in work directory',
-      'At least 3 actionable recommendations',
-      'Copilot review completes after Grok',
+      'Mock or real implementation step completes',
+      'Test step reports PASS (or equivalent)',
+      'Review returns APPROVED or clear CHANGES_REQUESTED',
     ],
   });
 }

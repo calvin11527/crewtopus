@@ -172,8 +172,18 @@ src/
 | Proactive Engine | Background automation triggers |
 | Consensus Engine | Multi-agent decision combining |
 
+## Mock demo
+
+With the backend running:
+
+```bash
+npm run demo
+```
+
+See the [root README](../README.md) for the 60-second cold start.
+
 ## License
 
-[PolyForm Noncommercial 1.0.0](../LICENSE) — **non-commercial use only.** See the repository root for the full license text.
+[MIT](../LICENSE). See the repository root for the full license text.
 
 For the public project overview, security policy, and environment template, see the [root README](../README.md), [SECURITY.md](../SECURITY.md), and [.env.example](../.env.example).

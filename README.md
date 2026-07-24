@@ -6,156 +6,201 @@
 
 <p align="center">
   <strong>Many AI arms. One sprint crew.</strong><br/>
-  Local multi-agent orchestration — staff BA, PM, and developers (Grok, Copilot, Claude, Ollama, and more) on a Kanban board with full lifecycle automation.
+  Local multi-agent orchestration — staff BA, PM, and developers on a Kanban board<br/>
+  and run a full delivery lifecycle (not just another chat window).
 </p>
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-red.svg" alt="PolyForm Noncommercial License" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node.js" /></a>
   <a href="https://github.com/calvin11527/crewtopus/releases"><img src="https://img.shields.io/github/v/release/calvin11527/crewtopus?include_prereleases" alt="Release" /></a>
+  <a href="https://github.com/calvin11527/crewtopus/issues"><img src="https://img.shields.io/github/issues/calvin11527/crewtopus" alt="Issues" /></a>
 </p>
 
 <p align="center">
   <img src="docs/assets/crewtopus-demo.gif" alt="Crewtopus demo — dashboard, agent registry, scrum board, and work-item agent console" width="840" />
 </p>
 
-<p align="center"><em>Dashboard → agents → sprint board → work-item console (short walkthrough)</em></p>
+<p align="center"><em>Dashboard → agents → sprint board → work-item console</em></p>
 
-> **Security notice:** Crewtopus runs coding agents with broad local tool/filesystem access. Use only on machines and repositories you trust. Do **not** expose the API to the public internet without authentication. See [SECURITY.md](./SECURITY.md).
+> **Security:** Agents get broad local filesystem/tool access. Use only on machines and repos you trust. Do **not** expose the API to the public internet without auth. See [SECURITY.md](./SECURITY.md).
 
-## Why Crewtopus?
+---
 
-Coding agents are powerful alone. **Crewtopus** turns them into a **sprint crew**:
+## Problem
 
-- **Board-first** — epics, stories, tasks with live agent activity  
-- **Full lifecycle** — Business Analyst → Project Manager (auto-create tasks) → developer pipeline  
-- **Switch adapters** — e.g. Copilot → Grok when a provider is over quota (same staffed role)  
-- **Privacy guard** — best-effort secret scanning before outbound context  
-- **Local-first** — optional Ollama; Docker infra for Redis / Ollama / metrics  
+Coding agents are strong **alone**. Delivery still falls apart because:
 
-*Many tentacles, one delivery.*
+- Work lives in **chat history**, not on a board  
+- There is no **BA → PM → dev → review** handoff  
+- When one provider is over quota, you restart the whole thread  
 
-## Prerequisites
+**Crewtopus** turns agents into a **sprint crew**: roles, board state, pipeline, audit, adapter switch.
 
-- **Node.js ≥ 20**
-- **npm** (workspaces)
-- **Docker Desktop** (optional but recommended for Redis / Ollama / metrics)
-- At least one agent CLI: Grok, Copilot, Claude Code, Ollama, etc.
+> One agent is a tool. A crew is a process.
 
-## Quick start
+---
+
+## Try it in ~60 seconds (no API keys)
+
+**Requirements:** Node.js ≥ 20, npm.
 
 ```bash
 git clone https://github.com/calvin11527/crewtopus.git
-cd crewtopus
-
-# Optional infrastructure (Redis, Ollama, Prometheus, Grafana)
-cd src
-npm run infra:up
-
-# Install
-npm install
-cd backend && npm install
-cd ../frontend && npm install
-cd ..
-
-# Optional config
-cp ../.env.example .env
-
-# Run API + UI
-npm run dev
+cd crewtopus/src
+npm run setup          # installs workspaces
+npm run dev            # API http://localhost:3000 · UI http://localhost:5173
 ```
+
+In a **second terminal** (with `dev` still running):
+
+```bash
+cd crewtopus/src
+npm run demo           # mock implement → test → review pipeline
+```
+
+Then open **http://localhost:5173/board**, click the new story, and watch the agent console.
+
+No Grok, Copilot, Claude, or Ollama required for this path — it uses the built-in **Mock Agent**.
 
 | Service | URL |
 |---------|-----|
-| Frontend | http://localhost:5173 |
-| Backend API | http://localhost:3000 |
-| Grafana (if infra up) | http://localhost:3001 |
+| UI | http://localhost:5173 |
+| API | http://localhost:3000 |
 
-Open **http://localhost:5173** → **Workspaces** → **Agents** → **Board** → staff a sprint team → run **Full lifecycle** on a story.
+### In the UI (same mock path)
 
-### First five minutes
+1. Open **Scrum Board**  
+2. Click **Multi-agent demo** (runs mock pipeline)  
+3. Open the card → **Agent console** + history  
 
-1. **Configure agents** — Agent Registry → set adapter (Grok, Copilot, Ollama, …) and model. Over quota? Switch adapter type.
-2. **Create a workspace** and link a local project folder.
-3. **Create a sprint** and staff BA, PM, and developer roles.
-4. **Add a story** and run **Full lifecycle**.
-5. Watch **Live Activity** / work-item console for CLI output.
+---
+
+## Who it's for
+
+| You want… | Crewtopus |
+|-----------|-----------|
+| Process around agents you already use (Grok / Copilot / Claude / Ollama) | Yes |
+| Local-first board + lifecycle on *your* machine | Yes |
+| Fully unattended production deploys | Not yet — human review still matters |
+| Multi-tenant cloud SaaS | No (local orchestration) |
+
+---
+
+## Crewtopus vs “just chat”
+
+| | Chat / single agent | Crewtopus |
+|--|---------------------|-----------|
+| Work tracking | Transcript | Kanban epics / stories / tasks |
+| Roles | One prompt | BA, PM, developer, tester, reviewer |
+| Failures | Restart chat | Retry, audit, board status |
+| Quota | Stuck | Switch adapter, same staffed role |
+| Privacy | Hope | Best-effort secret scan before outbound context |
+
+---
+
+## Real agents (after the mock demo)
+
+1. **Agents** — set adapter (Grok, Copilot, Claude, Ollama, …) and model. Over quota? Change adapter type on the same role.  
+2. **Workspaces** — link a local project folder.  
+3. **Board** — create a sprint, staff BA / PM / developers.  
+4. Add a **story** → **Full lifecycle** (BA → PM tasks → developer pipeline).  
+5. Watch **Live Activity** / work-item console.
+
+Optional infra (Redis, Ollama, Prometheus, Grafana):
+
+```bash
+cd src
+npm run infra:up
+```
+
+---
 
 ## Configuration
 
-See **[.env.example](./.env.example)** for environment variables.
+See **[.env.example](./.env.example)**.
 
 | Variable | Purpose |
 |----------|---------|
 | `PORT` | Backend HTTP port (default `3000`) |
-| `AGENTHUB_WORK_DIR` | Root for agent work artifacts *(legacy env prefix; still used)* |
+| `AGENTHUB_WORK_DIR` | Agent work artifacts *(legacy prefix; still used)* |
 | `AGENTHUB_DB_PATH` | SQLite path |
 | `OLLAMA_HOST` | Local Ollama URL |
 | `GROK_*` / `COPILOT_*` | Adapter CLI paths, timeouts, permissions |
+
+---
 
 ## Project layout
 
 ```
 crewtopus/
 ├── README.md
-├── LICENSE                 # PolyForm Noncommercial 1.0.0
+├── LICENSE                 # MIT
+├── CONTRIBUTING.md
 ├── SECURITY.md
-├── .env.example
 ├── docs/
-│   └── assets/            # Logo & brand
+│   ├── ROADMAP.md
+│   ├── assets/             # Logo & demo GIF
+│   └── wiki/               # Wiki source
 └── src/
-    ├── backend/           # Express + WebSocket + SQLite
-    ├── frontend/          # React + Vite UI
-    ├── infra/             # Docker Compose / k8s
+    ├── backend/            # Express + WebSocket + SQLite
+    ├── frontend/           # React + Vite UI
+    ├── infra/              # Docker Compose / k8s
+    ├── scripts/            # demo + automation proofs
     └── package.json
 ```
 
-More detail: [src/README.md](./src/README.md) · [src/infra/README.md](./src/infra/README.md)
-
-## Development
-
-```bash
-cd src
-npm run dev
-npm test
-npm run build
-```
+---
 
 ## Architecture
 
 ```
 Frontend (React)  ──REST/WS──▶  Backend (Express)
-                                    ├── Agent adapters (CLI)
+                                    ├── Agent adapters (CLI + mock)
                                     ├── Lifecycle (BA / PM / pipeline)
                                     ├── Privacy guard + audit
                                     └── SQLite + optional Redis
 ```
 
-## Documentation / Wiki
+---
 
-- **[GitHub Wiki](https://github.com/calvin11527/crewtopus/wiki)** — Getting Started, Architecture, Agents, Lifecycle, Config, Security, Troubleshooting
-- Source of truth for wiki pages: [`docs/wiki/`](./docs/wiki/)
-- Repo docs: [src/README.md](./src/README.md) · [SECURITY.md](./SECURITY.md)
+## Known limitations (honest)
+
+- Best on **trusted local repos**; not a hardened multi-tenant server.  
+- Real CLI adapters need those tools installed and authenticated.  
+- “Crew = process” is a **harness** — quality still depends on models, prompts, and human review.  
+- Pre-1.0 (`v0.x`) — APIs and UX may change.
+
+See [docs/ROADMAP.md](./docs/ROADMAP.md).
+
+---
+
+## Documentation
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — setup, tests, PR tips  
+- [docs/ROADMAP.md](./docs/ROADMAP.md) — near-term priorities  
+- [SECURITY.md](./SECURITY.md)  
+- [GitHub Wiki](https://github.com/calvin11527/crewtopus/wiki) · source in [`docs/wiki/`](./docs/wiki/)  
+- [src/README.md](./src/README.md) · [src/infra/README.md](./src/infra/README.md)
+
+---
 
 ## Contributing
 
-Issues and PRs welcome. Please:
+Issues and PRs welcome. Good first issues: [`good first issue`](https://github.com/calvin11527/crewtopus/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
 
-1. Open an issue for large changes.
-2. Keep PRs focused; add tests when behavior changes.
-3. Never commit secrets or personal machine paths.
-4. Run `npm test` under `src/` before submitting.
+```bash
+cd src && npm test
+```
+
+---
 
 ## License
 
-[PolyForm Noncommercial License 1.0.0](./LICENSE) © Crewtopus Contributors
+[MIT](./LICENSE) © Crewtopus Contributors
 
-**Non-commercial use only.** You may use, study, and modify Crewtopus for personal,
-educational, research, hobby, and other non-commercial purposes. **Commercial use
-is not allowed** under this license (for example selling the software, using it to
-provide paid services, or internal business use that is commercial in nature).
+Earlier commits briefly used PolyForm Noncommercial; **current `main` is MIT**.
 
-For commercial licensing, contact the maintainers.
+---
 
-> **Note:** Code published under MIT before this change remains available under MIT
-> for those earlier commits only. This and future releases use PolyForm Noncommercial.
+*Many tentacles, one delivery.*

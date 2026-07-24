@@ -709,8 +709,8 @@ export function seedDemoWorkItems(): void {
   const count = getDatabase().prepare('SELECT COUNT(*) as c FROM work_item').get() as { c: number };
   if (count.c > 0) return;
 
-  const sprint = createSprint('Sprint 1', {
-    goal: 'AgentHub Agile board MVP',
+  const sprint = createSprint('Welcome Demo Sprint', {
+    goal: 'See board + mock multi-agent pipeline without paid CLIs',
     status: 'active',
     startDate: now().slice(0, 10),
   });
@@ -739,14 +739,19 @@ export function seedDemoWorkItems(): void {
 
   createWorkItem({
     type: 'story',
-    title: 'As a user I can run an agent on a story',
-    description: 'Trigger mock or real agent; activity logged to audit.',
+    title: 'As a user I can run a mock multi-agent pipeline',
+    description:
+      'Click Multi-agent demo or run `npm run demo` — mock implement → test → review with no paid CLIs.',
     sprintId: sprint.id,
     parentId: epic.id,
     storyPoints: 3,
     assignedAgentType: 'mock',
     status: 'todo',
-    acceptanceCriteria: ['Run agent button works', 'Status moves to in_review', 'Audit entry linked'],
+    acceptanceCriteria: [
+      'Multi-agent demo creates a work item',
+      'Mock pipeline completes',
+      'Activity appears on the card',
+    ],
   });
 
   createWorkItem({

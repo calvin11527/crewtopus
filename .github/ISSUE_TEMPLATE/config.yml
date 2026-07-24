@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/calvin11527/crewtopus/security/advisories/new
+    about: Report privately — do not open a public issue for exploits.
+  - name: Discussions
+    url: https://github.com/calvin11527/crewtopus/discussions
+    about: Questions, ideas, and show-and-tell.

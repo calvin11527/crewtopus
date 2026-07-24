@@ -587,10 +587,10 @@ router.post('/:id/run-pipeline', async (req: Request, res: Response) => {
         return;
       }
 
-      const job = enqueueWorkItemPipeline(req.params.id, workflowId, { maxIterations, autoLoop });
+      const job = enqueueWorkItemPipeline(req.params.id, workflowId, { maxIterations, autoLoop, demo });
       prepareWorkItemAgentRun(req.params.id, job.id);
       updateWorkItem(req.params.id, { loopStatus: 'running' });
-      res.status(202).json({ jobId: job.id, status: job.status, workItemId: item.id });
+      res.status(202).json({ jobId: job.id, status: job.status, workItemId: item.id, demo: !!demo });
       return;
     }
 

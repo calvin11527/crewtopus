@@ -623,14 +623,14 @@ export default function Board() {
     }
   };
 
-  const handleRunPipeline = async (item: WorkItem, runAsync = true) => {
+  const handleRunPipeline = async (item: WorkItem, runAsync = true, demo = false) => {
     const hasJob = itemHasActiveJob(item.id);
     if (isWorkItemBusy(item, hasJob)) {
       notifyBusy(item, hasJob);
       return;
     }
     try {
-      const result = await runPipeline.mutateAsync({ id: item.id, async: runAsync });
+      const result = await runPipeline.mutateAsync({ id: item.id, async: runAsync, demo });
       if ('jobId' in result) {
         setActiveJobId(result.jobId);
         setPendingJob(item.id, result.jobId);
@@ -706,8 +706,10 @@ export default function Board() {
   };
 
   const handleMultiAgentDemo = async () => {
+    // Always mock pipeline so first-time users succeed without paid CLIs.
     const { item } = await createDemo.mutateAsync(selectedSprint);
-    await handleRunPipeline(item);
+    setActionNotice('Running multi-agent demo with mock adapters (no paid CLIs)…');
+    await handleRunPipeline(item, true, true);
   };
 
   useEffect(() => {
@@ -1337,7 +1339,7 @@ export default function Board() {
               className="btn--board-action btn--board-action--demo"
               onClick={handleMultiAgentDemo}
               disabled={createDemo.isPending || runPipeline.isPending}
-              title="Grok implements, Copilot reviews, loops until approved or escalated"
+              title="Mock implement → test → review (no paid CLIs). Use Full lifecycle for real adapters."
             >
               <GitBranch size={15} /> Multi-agent demo
             </button>
