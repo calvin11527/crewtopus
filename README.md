@@ -41,7 +41,33 @@ Coding agents are strong **alone**. Delivery still falls apart because:
 
 ---
 
-## Try it in ~60 seconds (no API keys)
+## Try it (no API keys)
+
+### Option A — one command (Docker)
+
+**Requirements:** Docker Desktop running.
+
+```bash
+git clone https://github.com/calvin11527/crewtopus.git
+cd crewtopus
+./demo.sh
+```
+
+That builds the lean stack (API + UI only), waits for health, runs a **mock** implement → test → review pipeline, and prints links.
+
+| Service | URL |
+|---------|-----|
+| UI | http://localhost:8080 |
+| Board | http://localhost:8080/board |
+| API (via nginx) | http://localhost:8080/api |
+
+```bash
+./demo.sh run    # re-run mock pipeline
+./demo.sh logs   # follow logs
+./demo.sh down   # stop
+```
+
+### Option B — local Node (~60s)
 
 **Requirements:** Node.js ≥ 20, npm.
 
@@ -56,12 +82,8 @@ In a **second terminal** (with `dev` still running):
 
 ```bash
 cd crewtopus/src
-npm run demo           # mock implement → test → review pipeline
+npm run demo           # mock implement → test → review → approved
 ```
-
-Then open **http://localhost:5173/board**, click the new story, and watch the agent console.
-
-No Grok, Copilot, Claude, or Ollama required for this path — it uses the built-in **Mock Agent**.
 
 | Service | URL |
 |---------|-----|
@@ -71,8 +93,10 @@ No Grok, Copilot, Claude, or Ollama required for this path — it uses the built
 ### In the UI (same mock path)
 
 1. Open **Scrum Board**  
-2. Click **Multi-agent demo** (runs mock pipeline)  
+2. Click **Multi-agent demo** (mock pipeline → **done / approved**)  
 3. Open the card → **Agent console** + history  
+
+No Grok, Copilot, Claude, or Ollama required — built-in **Mock Agent**.  
 
 ---
 

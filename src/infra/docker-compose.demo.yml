@@ -1,0 +1,74 @@
+###############################################################################
+# Crewtopus – lean demo stack (API + UI only, mock agents, no Ollama/Redis)
+#
+# One command from repo root:
+#   ./demo.sh
+# or from src/:
+#   npm run demo:docker
+###############################################################################
+
+x-common: &common
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  # Service name `backend` matches frontend/nginx.conf proxy_pass.
+  backend:
+    <<: *common
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    image: crewtopus-backend:demo
+    container_name: crewtopus-backend
+    # API is reached via frontend nginx on :8080 (/api). Bind host 3000 only if free:
+    # ports: ["3000:3000"]
+    expose:
+      - "3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      # Fresh volume → seedDemoWorkItems + Mock Agent on first boot
+      - AGENTHUB_DB_PATH=/app/data/agenthub.db
+      - AGENTHUB_WORK_DIR=/app/data/work
+    volumes:
+      - crewtopus-demo-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 25s
+    networks:
+      - crewtopus-demo
+
+  frontend:
+    <<: *common
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    image: crewtopus-frontend:demo
+    container_name: crewtopus-frontend
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - crewtopus-demo
+
+volumes:
+  crewtopus-demo-data:
+
+networks:
+  crewtopus-demo:
+    driver: bridge

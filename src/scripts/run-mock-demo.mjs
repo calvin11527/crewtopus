@@ -101,7 +101,7 @@ async function main() {
   // Synchronous run so CLI demo prints a real result (async defaults to job queue).
   const pipeline = await json('POST', `/work-items/${item.id}/run-pipeline`, {
     demo: true,
-    maxIterations: 2,
+    maxIterations: 1,
     autoLoop: true,
     async: false,
   });
@@ -121,11 +121,13 @@ async function main() {
   }
 
   const ok =
-    pipeline.loopStatus === 'approved' ||
-    pipeline.item?.status === 'done' ||
+    pipeline.loopStatus === 'approved' &&
+    pipeline.item?.status === 'done' &&
     pipeline.reviewVerdict === 'approved';
 
-  console.log(`\n${ok ? 'PASS' : 'PARTIAL'}: open the board and click the story card.`);
+  console.log(
+    `\n${ok ? 'PASS' : 'FAIL'}: expected loopStatus=approved, status=done, reviewVerdict=approved`
+  );
   console.log(`  UI:    ${UI}/board`);
   console.log(`  Story: ${UI}/board (select ${item.key})`);
   console.log(`\nNext: staff real adapters (Grok / Copilot / Claude / Ollama) on Agents,`);

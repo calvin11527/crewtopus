@@ -8,7 +8,22 @@
 - For real agents: Grok, Copilot, Claude Code, Ollama, etc.  
   **Not required** for the mock demo path below.
 
-## Fastest path (mock demo, ~60s)
+## Fastest path — Docker one command
+
+```bash
+git clone https://github.com/calvin11527/crewtopus.git
+cd crewtopus
+./demo.sh
+```
+
+Open **http://localhost:8080/board**. Mock pipeline runs automatically (`loopStatus=approved`).
+
+```bash
+./demo.sh run    # again
+./demo.sh down   # stop
+```
+
+## Fastest path — local Node (~60s)
 
 ```bash
 git clone https://github.com/calvin11527/crewtopus.git
@@ -26,7 +41,7 @@ npm run demo
 
 Open **http://localhost:5173/board**, open the new story, watch the console.
 
-Or in the UI: **Scrum Board** → **Multi-agent demo** (mock implement → test → review).
+Or in the UI: **Scrum Board** → **Multi-agent demo** (mock implement → test → review → **approved**).
 
 ## Install & run (full)
 

@@ -7,11 +7,12 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY frontend/package.json ./frontend/
-RUN npm ci --workspace=agenthub-frontend --include-workspace-root
+RUN npm ci --workspace=crewtopus-frontend --include-workspace-root
 
 COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.node.json ./frontend/
+COPY frontend/public ./frontend/public
 COPY frontend/src ./frontend/src
-RUN npm run build --workspace=agenthub-frontend
+RUN npm run build --workspace=crewtopus-frontend
 
 FROM nginx:1.27-alpine AS runtime
 

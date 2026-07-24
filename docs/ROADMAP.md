@@ -9,7 +9,8 @@ Living roadmap for adoption and product maturity. Order is intentional: **activa
 - [x] Conversion-oriented README (problem → 60s demo → full setup)
 - [x] MIT license for community use
 - [x] CONTRIBUTING + issue templates
-- [ ] One-command Docker “UI + mock” stack (optional infra path)
+- [x] One-command Docker demo (`./demo.sh`) — UI + API + mock approved
+- [x] Mock demo ends cleanly as `loopStatus=approved` / `status=done`
 - [ ] Public case study: real repo + one finished story write-up
 
 ## Next (trust on non-toy repos)

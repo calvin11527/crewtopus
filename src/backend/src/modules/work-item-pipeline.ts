@@ -106,26 +106,51 @@ function grokCopilotWorkflowDefinition(): WorkflowDefinition {
 }
 
 function mockDemoWorkflowDefinition(): WorkflowDefinition {
-  const grokLoop = grokCopilotWorkflowDefinition().loops![0];
+  // Verdict-only success path: mock review always returns APPROVED, so first-run
+  // demos finish as loopStatus=approved / status=done (not escalated by AC evals).
   return {
     name: MOCK_DEMO_WORKFLOW_NAME,
     steps: [],
     loops: [
       {
-        ...grokLoop,
         id: 'mock-demo',
-        steps: grokLoop.steps.map((step) => {
-          if (step.capability === 'implementation') {
-            return { ...step, agent: 'mock', name: 'mock_implementation' };
-          }
-          if (step.capability === 'testing') {
-            return { ...step, agent: 'mock', name: 'mock_testing' };
-          }
-          if (step.capability === 'review') {
-            return { ...step, agent: 'mock', name: 'mock_review' };
-          }
-          return { ...step, agent: 'mock' };
-        }),
+        until: 'verdict_approved',
+        maxIterations: 1,
+        onExhausted: 'escalate',
+        verdictParser: 'approved_changes_requested',
+        evals: [{ id: 'verdict', type: 'verdict_parse', config: { required: 'approved' } }],
+        steps: [
+          {
+            name: 'mock_implementation',
+            agent: 'mock',
+            capability: 'implementation',
+            config: {
+              prompt:
+                'Implement the requested improvements. Write all files to the working directory. ' +
+                'Do not only describe changes — apply them with file tools.',
+            },
+          },
+          {
+            name: 'mock_testing',
+            agent: 'mock',
+            capability: 'testing',
+            config: {
+              prompt:
+                'Run or write tests for the implementation in the prior step. ' +
+                'Report PASS or FAIL with a short summary of what was validated.',
+            },
+          },
+          {
+            name: 'mock_review',
+            agent: 'mock',
+            capability: 'review',
+            config: {
+              prompt:
+                'Review the implementation in the prior step output and any files in context. ' +
+                'Start with APPROVED or CHANGES_REQUESTED, then give detailed feedback.',
+            },
+          },
+        ],
       },
     ],
   };

@@ -11,12 +11,12 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY backend/package.json ./backend/
-RUN npm ci --workspace=agenthub-backend --include-workspace-root
+RUN npm ci --workspace=crewtopus-backend --include-workspace-root
 
 COPY backend/tsconfig.json ./backend/
 COPY backend/src ./backend/src
-RUN npm run build --workspace=agenthub-backend \
-  && npm prune --omit=dev --workspace=agenthub-backend
+RUN npm run build --workspace=crewtopus-backend \
+  && npm prune --omit=dev --workspace=crewtopus-backend
 
 FROM node:20-bookworm-slim AS runtime
 

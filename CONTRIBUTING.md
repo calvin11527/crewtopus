@@ -11,7 +11,14 @@ npm run setup    # npm install (workspaces)
 npm run dev      # API :3000 + UI :5173
 ```
 
-**Mock demo (no Grok/Copilot required):** with `npm run dev` running in another terminal:
+**One-command Docker demo** (Docker Desktop required):
+
+```bash
+./demo.sh          # build + start + mock pipeline → approved
+./demo.sh down
+```
+
+**Local mock demo** (no Grok/Copilot): with `npm run dev` in another terminal:
 
 ```bash
 cd src

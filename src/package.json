@@ -19,6 +19,8 @@
   "scripts": {
     "setup": "npm install",
     "demo": "node scripts/run-mock-demo.mjs",
+    "demo:docker": "bash ../demo.sh",
+    "demo:docker:down": "bash ../demo.sh down",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",

@@ -40,7 +40,10 @@ services:
       ollama:
         condition: service_started
     networks:
-      - agenthub
+      agenthub:
+        # Matches frontend/nginx.conf proxy_pass host
+        aliases:
+          - backend
 
   # ---------------------------------------------------------------------------
   # AgentHub Frontend – React UI (nginx)

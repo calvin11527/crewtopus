@@ -270,12 +270,17 @@ export function allEvalsPassed(results: EvalResult[]): boolean {
 
 /** Default eval set for Grok→Copilot work-item loops (verdict + acceptance + optional tests). */
 export function defaultWorkItemLoopEvals(workItem?: WorkItem, options?: { demo?: boolean }): LoopEval[] {
+  // Demo / mock: verdict only so first-run always lands on approved when review says APPROVED.
+  if (options?.demo) {
+    return [{ id: 'verdict', type: 'verdict_parse', config: { required: 'approved' } }];
+  }
+
   const evals: LoopEval[] = [
     { id: 'verdict', type: 'verdict_parse', config: { required: 'approved' } },
     { id: 'acceptance', type: 'acceptance_criteria' },
   ];
 
-  if (!options?.demo && workItem && resolveWorkItemWorkDir(workItem)) {
+  if (workItem && resolveWorkItemWorkDir(workItem)) {
     evals.push({
       id: 'tests',
       type: 'test_command',
