@@ -19,6 +19,8 @@ import { getWorkspace } from './workspace';
 import { getWorkItem } from './work-items';
 import { assertAgentTypeWithinBudget } from './agent-credits';
 import { resolveModelForAgent } from './agent-models';
+import { recordRunUsage, isProviderThrottleError, recordProviderThrottle } from './usage-meter';
+import { recordRunLearning } from './capability-learning';
 import { incrementCounter } from '../metrics';
 import { broadcast } from '../websocket';
 import { now } from '../utils/helpers';
@@ -264,6 +266,9 @@ export async function executeOutboundPipeline(request: OutboundRequest): Promise
     } catch (err) {
       lastError = err as Error;
       attempts.push({ attempt, error: lastError.message, success: false });
+      if (isProviderThrottleError(lastError.message)) {
+        recordProviderThrottle(effectiveType, lastError.message);
+      }
       if (
         attempt < retryPolicy.maxAttempts &&
         isRetryableError(err, retryPolicy.retryOn) &&
@@ -275,6 +280,20 @@ export async function executeOutboundPipeline(request: OutboundRequest): Promise
         await sleep(backoff);
         continue;
       }
+      recordRunUsage({
+        agentType: effectiveType,
+        agentId: request.agentId,
+        tokenCount: 0,
+        success: false,
+        errorMessage: lastError.message,
+      });
+      recordRunLearning({
+        agentType: effectiveType,
+        success: false,
+        errorMessage: lastError.message,
+        capability: request.capability,
+        model: resolveModelForAgent(request.agentId, effectiveType),
+      });
       throw err;
     }
   }
@@ -320,6 +339,7 @@ export async function executeOutboundPipeline(request: OutboundRequest): Promise
   const contentAudit = previewAuditContent(output.content);
   const resolvedModel = resolveModelForAgent(request.agentId, effectiveType);
 
+  const cost = estimateCost(effectiveType, output.tokenCount);
   const auditEntry = logAuditEntry({
     id: auditId,
     agentId: request.agentId,
@@ -332,7 +352,7 @@ export async function executeOutboundPipeline(request: OutboundRequest): Promise
     contextHash: ctxHash,
     files: request.filePaths,
     tokenCount: output.tokenCount,
-    cost: estimateCost(effectiveType, output.tokenCount),
+    cost,
     approvalStatus,
     responseMetadata: {
       adapter: effectiveType,
@@ -353,6 +373,23 @@ export async function executeOutboundPipeline(request: OutboundRequest): Promise
       model: resolvedModel ?? output.metadata.model ?? undefined,
       ...output.metadata,
     },
+  });
+
+  // Immediate usage refresh + capability learning (WS clients update CreditUsage live).
+  recordRunUsage({
+    agentType: effectiveType,
+    agentId: request.agentId,
+    tokenCount: output.tokenCount,
+    cost,
+    tokenSource: typeof output.metadata?.tokenSource === 'string' ? (output.metadata.tokenSource as 'adapter') : 'audit',
+    success: true,
+  });
+  recordRunLearning({
+    agentType: effectiveType,
+    success: true,
+    tokenCount: output.tokenCount,
+    capability: request.capability,
+    model: resolvedModel ?? (typeof output.metadata?.model === 'string' ? output.metadata.model : undefined),
   });
 
   return {

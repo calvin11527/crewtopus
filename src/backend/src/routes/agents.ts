@@ -20,6 +20,15 @@ import {
 } from '../modules/agent-employment';
 import { getCapabilitiesForAgent, syncCapabilitiesForAgentType } from '../modules/capability-registry';
 import { calibrateAgentProviderUsage, getAgentCreditUsage } from '../modules/agent-credits';
+import { forceProviderRescan, getUsageSyncMeta } from '../modules/usage-meter';
+import {
+  generateUsageBasedSuggestions,
+  listCapabilityFacts,
+  listImprovementSuggestions,
+  probeAgentCapabilities,
+  applyImprovementSuggestion,
+  setSuggestionStatus,
+} from '../modules/capability-learning';
 import {
   listAgentModelCatalog,
   listModelsForAgentType,
@@ -43,6 +52,66 @@ router.get('/roster', (_req: Request, res: Response) => {
 
 router.get('/credits', (_req: Request, res: Response) => {
   res.json(getAgentCreditUsage());
+});
+
+/** Force provider session rescan + return fresh credit usage (realtime sync). */
+router.post('/credits/sync', (_req: Request, res: Response) => {
+  try {
+    const scan = forceProviderRescan();
+    generateUsageBasedSuggestions();
+    res.json({
+      ...scan,
+      usage: getAgentCreditUsage(),
+      meta: getUsageSyncMeta(),
+    });
+  } catch (err) {
+    res.status(500).json({ message: (err as Error).message });
+  }
+});
+
+router.get('/learning/facts', (req: Request, res: Response) => {
+  const type = req.query.agentType as string | undefined;
+  const valid = type && VALID_TYPES.includes(type as AgentType) ? (type as AgentType) : undefined;
+  res.json(listCapabilityFacts(valid));
+});
+
+router.get('/learning/suggestions', (req: Request, res: Response) => {
+  const status = (req.query.status as string) || 'open';
+  const allowed = ['open', 'applied', 'dismissed', 'all'] as const;
+  const s = allowed.includes(status as (typeof allowed)[number])
+    ? (status as 'open' | 'applied' | 'dismissed' | 'all')
+    : 'open';
+  res.json(listImprovementSuggestions(s));
+});
+
+router.post('/learning/probe', (req: Request, res: Response) => {
+  try {
+    const types = Array.isArray(req.body?.agentTypes)
+      ? (req.body.agentTypes as AgentType[]).filter((t) => VALID_TYPES.includes(t))
+      : undefined;
+    const result = probeAgentCapabilities(types);
+    const suggestions = generateUsageBasedSuggestions();
+    res.json({ ...result, suggestions });
+  } catch (err) {
+    res.status(500).json({ message: (err as Error).message });
+  }
+});
+
+router.post('/learning/suggestions/:id/apply', (req: Request, res: Response) => {
+  try {
+    res.json(applyImprovementSuggestion(req.params.id));
+  } catch (err) {
+    res.status(400).json({ message: (err as Error).message });
+  }
+});
+
+router.post('/learning/suggestions/:id/dismiss', (req: Request, res: Response) => {
+  const updated = setSuggestionStatus(req.params.id, 'dismissed');
+  if (!updated) {
+    res.status(404).json({ message: 'Suggestion not found' });
+    return;
+  }
+  res.json(updated);
 });
 
 router.get('/skills/catalog', (_req: Request, res: Response) => {

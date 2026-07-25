@@ -6,6 +6,7 @@ import {
   startOfCurrentMonthUtc,
   type ProviderTokenSnapshot,
 } from './provider-usage';
+import { getThrottleSignal, getUsageSyncMeta } from './usage-meter';
 import { now } from '../utils/helpers';
 import type { Agent, AgentCreditUsage, AgentType, UsageTrackingSource } from '../types';
 
@@ -383,6 +384,11 @@ export function getAgentCreditUsage(): AgentCreditUsage[] {
     // still block when either credit or (audit-based) token quota is exceeded.
     const overBudget = tracking.overBudget || creditOverBudget;
 
+    const throttle = getThrottleSignal(type);
+    const syncMeta = getUsageSyncMeta();
+    // Only quota_exceeded (not short-term rate limits) hard-blocks via overBudget.
+    const overBudgetWithThrottle = overBudget || throttle?.state === 'quota_exceeded';
+
     results.push({
       agentId: primary.id,
       agentName: primary.name,
@@ -392,7 +398,7 @@ export function getAgentCreditUsage(): AgentCreditUsage[] {
       creditsUsed: used,
       creditsRemaining: unlimited ? 0 : remaining,
       unlimited,
-      overBudget,
+      overBudget: overBudgetWithThrottle,
       tokenCount: auditTokens,
       requestCount: auditRequests,
       providerTokenCount: tracking.providerTokenCount,
@@ -404,6 +410,10 @@ export function getAgentCreditUsage(): AgentCreditUsage[] {
       providerDashboardPercent:
         typeof dashboardPercent === 'number' && dashboardPercent > 0 ? dashboardPercent : undefined,
       providerCalibratedAt: calibratedAt,
+      syncedAt: syncMeta.syncedAt,
+      throttleState: throttle?.state ?? 'ok',
+      throttleMessage: throttle?.message,
+      throttleAt: throttle?.at,
     });
   }
 

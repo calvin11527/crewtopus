@@ -15,6 +15,7 @@ import { useAppStore } from '../stores/useAppStore';
 import AgentCard from '../components/AgentCard';
 import AgentModelSelect from '../components/AgentModelSelect';
 import AgentSkillPicker from '../components/AgentSkillPicker';
+import AgentLearningPanel from '../components/AgentLearningPanel';
 import Modal from '../components/Modal';
 import { AGENT_ROLE_LABELS } from '../constants/agent-roles';
 import { AGENT_TYPES, formatAgentType } from '../constants/agent-types';
@@ -481,6 +482,8 @@ export default function Agents() {
           </p>
         )}
       </section>
+
+      <AgentLearningPanel />
 
       {isLoading ? (
         <p className="loading-text">Loading agents...</p>

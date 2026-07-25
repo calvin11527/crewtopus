@@ -45,6 +45,12 @@ export default function App() {
         qc.invalidateQueries({ queryKey: queryKeys.auditStats });
         qc.invalidateQueries({ queryKey: queryKeys.agentCredits });
       }
+      if (msg.type === 'usage:update') {
+        qc.invalidateQueries({ queryKey: queryKeys.agentCredits });
+      }
+      if (msg.type === 'capability:suggestion') {
+        qc.invalidateQueries({ queryKey: ['agents', 'learning'] });
+      }
       if (msg.type === 'approval:request') {
         qc.invalidateQueries({ queryKey: queryKeys.approvals });
       }

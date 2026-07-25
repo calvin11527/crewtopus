@@ -159,6 +159,33 @@ export interface AgentCreditUsage {
   providerCalibratedAt?: string;
   trackingSource?: 'provider' | 'agenthub_audit' | 'none';
   trackingNote?: string;
+  syncedAt?: string;
+  throttleState?: 'ok' | 'throttled' | 'quota_exceeded';
+  throttleMessage?: string;
+  throttleAt?: string;
+}
+
+export interface CapabilityFact {
+  id: string;
+  agentType: AgentType;
+  factKey: string;
+  factValue: unknown;
+  confidence: number;
+  source: string;
+  observedAt: string;
+  lastConfirmedAt: string;
+}
+
+export interface ImprovementSuggestion {
+  id: string;
+  agentType: AgentType | null;
+  title: string;
+  body: string;
+  severity: 'info' | 'warn' | 'critical';
+  status: 'open' | 'applied' | 'dismissed';
+  evidence: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SprintTeamMember {

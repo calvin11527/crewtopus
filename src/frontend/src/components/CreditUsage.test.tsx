@@ -20,9 +20,16 @@ vi.mock('../api/hooks', () => ({
         tokenCount: 1000,
         requestCount: 5,
         trackingSource: 'agenthub_audit',
+        syncedAt: new Date().toISOString(),
+        throttleState: 'ok',
       } satisfies AgentCreditUsage,
     ],
     isLoading: false,
+    dataUpdatedAt: Date.now(),
+  }),
+  useSyncAgentCredits: () => ({
+    mutate: vi.fn(),
+    isPending: false,
   }),
 }));
 

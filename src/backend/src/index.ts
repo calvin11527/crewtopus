@@ -40,6 +40,8 @@ import { startLoopWorker, stopLoopWorker } from './modules/loop-worker';
 import { startShiftScheduler, stopShiftScheduler } from './modules/shift-scheduler';
 import { startResourceCleanup, stopResourceCleanup } from './modules/resource-cleanup';
 import { closeRedisClient } from './modules/job-queue';
+import { startProviderUsageWatcher } from './modules/usage-meter';
+import { seedCapabilityLearning, capabilityLearningTick } from './modules/capability-learning';
 
 const PORT = Number(process.env.PORT) || 3000;
 const startTime = Date.now();
@@ -102,6 +104,22 @@ initWebSocket(server);
 startLoopWorker();
 startShiftScheduler();
 startResourceCleanup();
+startProviderUsageWatcher();
+try {
+  seedCapabilityLearning();
+} catch (err) {
+  console.warn('[AgentHub] Capability learning seed skipped:', (err as Error).message);
+}
+
+// Periodic improvement suggestions from live usage (probes stay on-demand).
+const learningTimer = setInterval(() => {
+  try {
+    capabilityLearningTick();
+  } catch {
+    /* best-effort */
+  }
+}, Number(process.env.AGENTHUB_LEARNING_TICK_MS) || 6 * 60 * 60 * 1000);
+learningTimer.unref?.();
 
 server.listen(PORT, () => {
   console.log(`[AgentHub] Backend running on http://localhost:${PORT}`);
@@ -111,6 +129,7 @@ server.listen(PORT, () => {
 
 async function shutdown(): Promise<void> {
   console.log('[AgentHub] Shutting down...');
+  clearInterval(learningTimer);
   stopLoopWorker();
   stopShiftScheduler();
   stopResourceCleanup();

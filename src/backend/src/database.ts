@@ -501,6 +501,39 @@ export function initDatabase(): Database.Database {
       db!.exec('CREATE INDEX IF NOT EXISTS idx_log_event_created_at ON log_event(created_at)');
       db!.exec('CREATE INDEX IF NOT EXISTS idx_log_event_work_item ON log_event(work_item_id)');
       db!.prepare('UPDATE schema_version SET version = ?').run(9);
+      version = 9;
+    }
+
+    if (version < 10) {
+      db!.exec(`CREATE TABLE IF NOT EXISTS agent_capability_fact (
+        id TEXT PRIMARY KEY,
+        agent_type TEXT NOT NULL,
+        fact_key TEXT NOT NULL,
+        fact_value TEXT NOT NULL DEFAULT 'null',
+        confidence REAL NOT NULL DEFAULT 0.7,
+        source TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        last_confirmed_at TEXT NOT NULL,
+        UNIQUE(agent_type, fact_key)
+      )`);
+      db!.exec(`CREATE TABLE IF NOT EXISTS agent_improvement_suggestion (
+        id TEXT PRIMARY KEY,
+        agent_type TEXT,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'info',
+        status TEXT NOT NULL DEFAULT 'open',
+        evidence TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`);
+      db!.exec(
+        'CREATE INDEX IF NOT EXISTS idx_capability_fact_type ON agent_capability_fact(agent_type)'
+      );
+      db!.exec(
+        'CREATE INDEX IF NOT EXISTS idx_improvement_status ON agent_improvement_suggestion(status)'
+      );
+      db!.prepare('UPDATE schema_version SET version = ?').run(10);
     }
   });
 

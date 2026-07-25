@@ -168,7 +168,81 @@ export function useAgentCredits() {
   return useQuery<AgentCreditUsage[]>({
     queryKey: queryKeys.agentCredits,
     queryFn: () => api.get('/agents/credits'),
+    // Backup poll; primary refresh is WS usage:update + audit:entry
     refetchInterval: 15_000,
+  });
+}
+
+export function useSyncAgentCredits() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{
+        syncedAt: string;
+        usage: AgentCreditUsage[];
+        meta?: { syncedAt: string; providerScannedAt?: string };
+      }>('/agents/credits/sync', {}),
+    onSuccess: (data) => {
+      if (data.usage) {
+        qc.setQueryData(queryKeys.agentCredits, data.usage);
+      }
+      qc.invalidateQueries({ queryKey: queryKeys.agentCredits });
+    },
+  });
+}
+
+export function useCapabilityFacts(agentType?: AgentType) {
+  return useQuery({
+    queryKey: ['agents', 'learning', 'facts', agentType ?? 'all'] as const,
+    queryFn: () =>
+      api.get<import('../types').CapabilityFact[]>(
+        agentType ? `/agents/learning/facts?agentType=${agentType}` : '/agents/learning/facts'
+      ),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useImprovementSuggestions(status: 'open' | 'all' = 'open') {
+  return useQuery({
+    queryKey: ['agents', 'learning', 'suggestions', status] as const,
+    queryFn: () =>
+      api.get<import('../types').ImprovementSuggestion[]>(
+        `/agents/learning/suggestions?status=${status}`
+      ),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useProbeCapabilities() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (agentTypes?: AgentType[]) =>
+      api.post('/agents/learning/probe', agentTypes ? { agentTypes } : {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agents', 'learning'] });
+      qc.invalidateQueries({ queryKey: queryKeys.agentCredits });
+    },
+  });
+}
+
+export function useApplySuggestion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/agents/learning/suggestions/${id}/apply`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agents', 'learning'] });
+      qc.invalidateQueries({ queryKey: queryKeys.agents });
+    },
+  });
+}
+
+export function useDismissSuggestion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/agents/learning/suggestions/${id}/dismiss`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agents', 'learning'] });
+    },
   });
 }
 

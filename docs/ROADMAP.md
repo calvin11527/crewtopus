@@ -15,10 +15,13 @@ Living roadmap for adoption and product maturity. Order is intentional: **activa
 
 ## Next (trust on non-toy repos)
 
+- [x] Real-time-ish credit usage (WS after runs, Sync now, throttle signals)
+- [x] Capability learning + improvement suggestions (opt-in apply)
 - [ ] Stronger cold start: empty DB → welcome sprint already staffed with Mock Agent
 - [ ] Clearer failure UX when a CLI adapter is missing (actionable error → switch adapter)
 - [ ] Export “sprint report” (what ran, verdicts, audit links) for sharing
 - [ ] Workspace onboarding wizard (pick folder → first story)
+- [ ] Optional file watchers for outside-Crewtopus CLI usage (`AGENTHUB_WATCH_PROVIDER_USAGE`)
 
 ## Later
 

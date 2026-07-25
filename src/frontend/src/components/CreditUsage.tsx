@@ -1,5 +1,5 @@
-import { Coins, Bot, Info, Settings2 } from 'lucide-react';
-import { useAgentCredits } from '../api/hooks';
+import { Coins, Bot, Info, Settings2, RefreshCw } from 'lucide-react';
+import { useAgentCredits, useSyncAgentCredits } from '../api/hooks';
 import type { AgentCreditUsage, AgentType } from '../types';
 
 const AGENT_COLORS: Record<AgentType, string> = {
@@ -77,6 +77,16 @@ function CreditRow({
         </div>
         {!entry.enabled && <span className="tag">Disabled</span>}
         {entry.overBudget && <span className="tag tag--danger">Over quota</span>}
+        {entry.throttleState === 'throttled' && (
+          <span className="tag tag--warn" title={entry.throttleMessage}>
+            Rate limited
+          </span>
+        )}
+        {entry.throttleState === 'quota_exceeded' && !entry.overBudget && (
+          <span className="tag tag--danger" title={entry.throttleMessage}>
+            Quota signal
+          </span>
+        )}
         {onConfigure && (
           <button
             type="button"
@@ -139,10 +149,15 @@ function CreditRow({
             re-sync <code>providerUsagePercent</code> on the agent (Agents page) to recalibrate.
           </p>
         )}
+      {entry.throttleMessage && (
+        <p className="credit-usage-note text-muted">
+          Live provider signal: {entry.throttleMessage}
+        </p>
+      )}
       {entry.agentType === 'grok' && (
         <p className="credit-usage-note text-muted">
-          Grok usage is based on AgentHub run audits + your dashboard calibration — not session
-          context size (that used to false-trigger over-budget).
+          Grok % uses Crewtopus run audits + optional dashboard calibration — not session context
+          size. Remote grok.com billing is not a public live API; use Sync after runs.
         </p>
       )}
     </div>
@@ -156,7 +171,8 @@ interface CreditUsageProps {
 }
 
 export default function CreditUsage({ compact = false, onConfigureAgent }: CreditUsageProps) {
-  const { data: credits, isLoading, isError } = useAgentCredits();
+  const { data: credits, isLoading, isError, dataUpdatedAt } = useAgentCredits();
+  const sync = useSyncAgentCredits();
 
   if (isLoading) {
     return (
@@ -183,6 +199,9 @@ export default function CreditUsage({ compact = false, onConfigureAgent }: Credi
     (sum, c) => sum + (c.providerTokenCount ?? c.tokenCount),
     0
   );
+  const syncedAt =
+    credits.map((c) => c.syncedAt).filter(Boolean).sort().at(-1) ||
+    (dataUpdatedAt ? new Date(dataUpdatedAt).toISOString() : undefined);
 
   return (
     <div id="credit-usage-panel" className={`card credit-usage-panel${compact ? ' credit-usage-panel--compact' : ''}`}>
@@ -190,15 +209,34 @@ export default function CreditUsage({ compact = false, onConfigureAgent }: Credi
         <h3>
           <Coins size={18} /> Agent Credit Usage
         </h3>
-        {!compact && (
-          <div className="credit-usage-summary">
-            <span>
-              <strong>{formatTokens(totalProviderTokens)}</strong> tokens tracked
-            </span>
-            <span className="text-muted">· usage % is total consumption per agent type</span>
-          </div>
-        )}
+        <div className="credit-usage-header-actions">
+          {!compact && (
+            <div className="credit-usage-summary">
+              <span>
+                <strong>{formatTokens(totalProviderTokens)}</strong> tokens tracked
+              </span>
+              <span className="text-muted">· live after each run (WS)</span>
+            </div>
+          )}
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            disabled={sync.isPending}
+            onClick={() => sync.mutate()}
+            title="Rescan local provider CLI sessions and recompute usage"
+          >
+            <RefreshCw size={14} className={sync.isPending ? 'spin' : undefined} />{' '}
+            {sync.isPending ? 'Syncing…' : 'Sync now'}
+          </button>
+        </div>
       </div>
+
+      {syncedAt && (
+        <p className="credit-usage-sync-meta text-muted">
+          Last sync {new Date(syncedAt).toLocaleTimeString()} · Crewtopus tracks its own runs + local
+          CLI session files; provider web dashboards remain the billing source of truth.
+        </p>
+      )}
 
       {sorted.length === 0 ? (
         <p className="text-muted">No agents registered yet.</p>

@@ -3995,6 +3995,126 @@ body {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.credit-usage-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.credit-usage-sync-meta {
+  font-size: 0.8rem;
+  margin: -8px 0 12px;
+  line-height: 1.4;
+}
+
+.tag--warn {
+  background: rgba(201, 162, 39, 0.2);
+  color: var(--accent-amber);
+  border: 1px solid rgba(201, 162, 39, 0.35);
+}
+
+.agent-learning-panel {
+  margin-top: 16px;
+}
+
+.agent-learning-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.agent-learning-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.agent-learning-intro {
+  font-size: 0.85rem;
+  margin: 0 0 16px;
+  line-height: 1.45;
+}
+
+.agent-learning-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .agent-learning-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.agent-learning-grid h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+}
+
+.agent-learning-suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agent-learning-suggestion {
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-glass);
+  background: var(--bg-glass);
+}
+
+.agent-learning-suggestion-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.agent-learning-suggestion p {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.agent-learning-suggestion-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.agent-learning-facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.8rem;
+}
+
+.agent-learning-facts li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+.agent-learning-facts code {
+  font-size: 0.78rem;
+  color: var(--jp-text-warm);
 }
 
 .credit-usage-header h3 {

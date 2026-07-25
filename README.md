@@ -188,10 +188,26 @@ Frontend (React)  ──REST/WS──▶  Backend (Express)
 
 ---
 
+## Usage metering (what “realtime” means)
+
+Providers rarely expose live billing APIs for CLI subscriptions. Crewtopus uses a **hybrid**:
+
+1. **Immediate** — every agent run updates audit tokens and broadcasts `usage:update` over WebSocket  
+2. **Local CLI sessions** — Copilot `~/.copilot` shutdown events; Grok session files are diagnostic only (context peaks ≠ monthly bill)  
+3. **Calibration** — optional dashboard % (`providerUsagePercent`) to size monthly quota  
+4. **Throttle signals** — rate-limit / quota errors surface live even when % looks fine  
+
+**Sync now** on Agent Credit Usage rescans local sessions. Remote dashboards (grok.com, github.com/settings/copilot) remain the billing source of truth.
+
+### Self-improving agents
+
+Crewtopus **learns** adapter features (`--help` probes, run outcomes, errors) and opens **opt-in suggestions** (e.g. switch adapter when over quota). See Agents → **Self-improving agents**.
+
 ## Known limitations (honest)
 
 - Best on **trusted local repos**; not a hardened multi-tenant server.  
 - Real CLI adapters need those tools installed and authenticated.  
+- Credit % is best-effort — not a 1:1 mirror of provider billing UIs.  
 - “Crew = process” is a **harness** — quality still depends on models, prompts, and human review.  
 - Pre-1.0 (`v0.x`) — APIs and UX may change.
 

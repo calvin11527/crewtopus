@@ -92,6 +92,7 @@ export interface Agent {
 }
 
 export type UsageTrackingSource = 'provider' | 'agenthub_audit' | 'none';
+export type UsageThrottleState = 'ok' | 'throttled' | 'quota_exceeded';
 
 /** Per agent-type usage: provider signals when available, else AgentHub audit totals. */
 export interface AgentCreditUsage {
@@ -122,6 +123,12 @@ export interface AgentCreditUsage {
   /** Which token total drives percentageUsed. */
   trackingSource: UsageTrackingSource;
   trackingNote?: string;
+  /** ISO time of last usage recompute / run / provider scan. */
+  syncedAt?: string;
+  /** Live soft signal from recent rate-limit / quota errors. */
+  throttleState?: UsageThrottleState;
+  throttleMessage?: string;
+  throttleAt?: string;
 }
 
 /* ─── Capability Registry (Module C) ─── */
@@ -462,6 +469,8 @@ export type WSMessageType =
   | 'story_queue:progress'
   | 'shift:update'
   | 'sprint_automation:status'
+  | 'usage:update'
+  | 'capability:suggestion'
   | 'system:notification';
 
 export interface WSMessage {
