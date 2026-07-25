@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Sparkles, X, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 const STORAGE_KEY = 'crewtopus.onboarding.v1';

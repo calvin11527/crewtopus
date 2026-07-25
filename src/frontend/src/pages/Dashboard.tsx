@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Activity, Bot, GitBranch, Shield, Zap, DollarSign, Sparkles } from 'lucide-react';
 import { useHealth, useSystemStatus, useAuditStats, useSupervisorStatus, useAgents, useWorkflows } from '../api/hooks';
 import LiveFeed from '../components/LiveFeed';

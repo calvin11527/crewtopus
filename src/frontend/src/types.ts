@@ -452,6 +452,7 @@ export interface SupervisorStatus {
 
 export type WSMessageType =
   | 'agent:status'
+  | 'agent:fallback'
   | 'workflow:update'
   | 'workflow:step'
   | 'audit:entry'
@@ -467,6 +468,8 @@ export type WSMessageType =
   | 'story_queue:progress'
   | 'shift:update'
   | 'sprint_automation:status'
+  | 'usage:update'
+  | 'capability:suggestion'
   | 'system:notification';
 
 export interface WSMessage {

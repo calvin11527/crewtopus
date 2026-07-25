@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Coins, Bot, Info, Settings2, RefreshCw } from 'lucide-react';
 import { useAgentCredits, useSyncAgentCredits, useSyncSuperGrokDashboard } from '../api/hooks';
 import type { AgentCreditUsage, AgentType } from '../types';
