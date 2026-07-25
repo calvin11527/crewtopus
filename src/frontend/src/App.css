@@ -4117,6 +4117,26 @@ body {
   color: var(--jp-text-warm);
 }
 
+.supergrok-paste-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.supergrok-paste {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  resize: vertical;
+}
+
 .supergrok-sync-fields {
   display: flex;
   flex-wrap: wrap;

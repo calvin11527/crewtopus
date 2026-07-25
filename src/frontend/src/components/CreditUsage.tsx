@@ -1,7 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Coins, Bot, Info, Settings2, RefreshCw } from 'lucide-react';
 import { useAgentCredits, useSyncAgentCredits, useSyncSuperGrokDashboard } from '../api/hooks';
 import type { AgentCreditUsage, AgentType } from '../types';
+import {
+  parseSuperGrokQuery,
+  parseSuperGrokUsageText,
+  toDatetimeLocalValue,
+} from '../utils/supergrok-parse';
 
 const AGENT_COLORS: Record<AgentType, string> = {
   claude: '#d97706',
@@ -197,11 +203,60 @@ export default function CreditUsage({ compact = false, onConfigureAgent }: Credi
   const { data: credits, isLoading, isError, dataUpdatedAt } = useAgentCredits();
   const sync = useSyncAgentCredits();
   const superGrok = useSyncSuperGrokDashboard();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [sgPercent, setSgPercent] = useState('61');
   const [sgBuild, setSgBuild] = useState('59');
   const [sgConversation, setSgConversation] = useState('2');
   const [sgReset, setSgReset] = useState('2026-07-25T23:02');
+  const [sgPaste, setSgPaste] = useState('');
   const [sgError, setSgError] = useState<string | null>(null);
+  const [sgOk, setSgOk] = useState<string | null>(null);
+  const [autoApplied, setAutoApplied] = useState(false);
+
+  const applySnapshot = async (snap: {
+    percent: number;
+    build?: number;
+    conversation?: number;
+    resetAt?: string;
+  }) => {
+    setSgPercent(String(snap.percent));
+    if (snap.build != null) setSgBuild(String(snap.build));
+    if (snap.conversation != null) setSgConversation(String(snap.conversation));
+    if (snap.resetAt) setSgReset(toDatetimeLocalValue(snap.resetAt));
+    setSgError(null);
+    await superGrok.mutateAsync({
+      percent: snap.percent,
+      build: snap.build,
+      conversation: snap.conversation,
+      resetAt: snap.resetAt,
+      agentType: 'grok',
+    });
+    setSgOk(
+      `Applied SuperGrok ${snap.percent}%` +
+        (snap.build != null ? ` (Build ${snap.build}%` : '') +
+        (snap.conversation != null ? ` · Conversation ${snap.conversation}%)` : snap.build != null ? ')' : '')
+    );
+  };
+
+  // Deep-link from bookmarklet: /agents?supergrok=1&percent=61&build=59&conversation=2&reset=...
+  useEffect(() => {
+    if (autoApplied) return;
+    const snap = parseSuperGrokQuery(searchParams);
+    if (!snap) return;
+    setAutoApplied(true);
+    void applySnapshot(snap)
+      .then(() => {
+        const next = new URLSearchParams(searchParams);
+        ['supergrok', 'percent', 'build', 'conversation', 'chat', 'reset', 'resetAt', 'sg'].forEach(
+          (k) => next.delete(k)
+        );
+        setSearchParams(next, { replace: true });
+      })
+      .catch((err) => {
+        setSgError(err instanceof Error ? err.message : 'Auto-sync failed');
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per query
+  }, [searchParams, autoApplied]);
 
   if (isLoading) {
     return (
@@ -277,90 +332,168 @@ export default function CreditUsage({ compact = false, onConfigureAgent }: Credi
         </div>
       )}
 
-      {!compact && (
-        <div className="supergrok-sync card" style={{ marginTop: 16 }}>
-          <h4 style={{ margin: '0 0 8px', fontSize: '0.9rem' }}>Sync SuperGrok (weekly)</h4>
-          <p className="text-muted" style={{ fontSize: '0.8rem', margin: '0 0 10px' }}>
-            From grok.com: overall % · Build % · Conversation % · reset time. Example: 61% = Build
-            59% + Conversation 2%.
-          </p>
-          <div className="supergrok-sync-fields">
-            <label>
-              Overall %
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={0.1}
-                value={sgPercent}
-                onChange={(e) => setSgPercent(e.target.value)}
-              />
-            </label>
-            <label>
-              Build %
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={0.1}
-                value={sgBuild}
-                onChange={(e) => setSgBuild(e.target.value)}
-              />
-            </label>
-            <label>
-              Conversation %
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={0.1}
-                value={sgConversation}
-                onChange={(e) => setSgConversation(e.target.value)}
-              />
-            </label>
-            <label>
-              Resets at
-              <input
-                type="datetime-local"
-                value={sgReset}
-                onChange={(e) => setSgReset(e.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              className="btn btn--primary btn--sm"
-              disabled={superGrok.isPending}
-              onClick={async () => {
-                setSgError(null);
+      <div id="supergrok-sync" className="supergrok-sync card" style={{ marginTop: 16 }}>
+        <h4 style={{ margin: '0 0 8px', fontSize: '0.9rem' }}>Sync SuperGrok (weekly)</h4>
+        <p className="text-muted" style={{ fontSize: '0.8rem', margin: '0 0 10px' }}>
+          Your site shows a <strong>weekly</strong> SuperGrok pool (Build + Conversation). There is
+          no public API — use the{' '}
+          <a href="/supergrok-sync.html" target="_blank" rel="noreferrer">
+            bookmarklet helper
+          </a>{' '}
+          or paste page text. Example: 61% = Build 59% + Conversation 2%.
+        </p>
+
+        <label className="supergrok-paste-label" htmlFor="supergrok-paste">
+          Paste SuperGrok text or bookmarklet JSON
+        </label>
+        <textarea
+          id="supergrok-paste"
+          className="supergrok-paste"
+          rows={compact ? 3 : 4}
+          placeholder={
+            '每週 SuperGrok 限制\n61%\n已使用\n重設於2026年7月25日 晚上11:02\nGrok Build\n59%\n對話\n2%'
+          }
+          value={sgPaste}
+          onChange={(e) => setSgPaste(e.target.value)}
+        />
+        <div className="supergrok-sync-fields" style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => {
+              setSgError(null);
+              setSgOk(null);
+              const snap = parseSuperGrokUsageText(sgPaste);
+              if (!snap) {
+                setSgError('Could not parse. Paste the SuperGrok limit panel text or JSON.');
+                return;
+              }
+              setSgPercent(String(snap.percent));
+              if (snap.build != null) setSgBuild(String(snap.build));
+              if (snap.conversation != null) setSgConversation(String(snap.conversation));
+              if (snap.resetAt) setSgReset(toDatetimeLocalValue(snap.resetAt));
+              setSgOk(
+                `Parsed ${snap.percent}%` +
+                  (snap.build != null ? ` · Build ${snap.build}%` : '') +
+                  (snap.conversation != null ? ` · Conversation ${snap.conversation}%` : '')
+              );
+            }}
+          >
+            Parse paste
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary btn--sm"
+            disabled={superGrok.isPending}
+            onClick={async () => {
+              setSgError(null);
+              setSgOk(null);
+              const fromPaste = sgPaste.trim() ? parseSuperGrokUsageText(sgPaste) : null;
+              try {
+                if (fromPaste) {
+                  await applySnapshot(fromPaste);
+                  return;
+                }
                 const percent = Number(sgPercent);
                 if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
                   setSgError('Overall % must be 0–100');
                   return;
                 }
-                try {
-                  await superGrok.mutateAsync({
-                    percent,
-                    build: sgBuild === '' ? undefined : Number(sgBuild),
-                    conversation: sgConversation === '' ? undefined : Number(sgConversation),
-                    resetAt: sgReset ? new Date(sgReset).toISOString() : undefined,
-                    agentType: 'grok',
-                  });
-                } catch (err) {
-                  setSgError(err instanceof Error ? err.message : 'Sync failed');
-                }
-              }}
-            >
-              {superGrok.isPending ? 'Saving…' : 'Apply SuperGrok %'}
-            </button>
-          </div>
-          {sgError && <p className="text-muted" style={{ color: 'var(--accent-red)' }}>{sgError}</p>}
-          {superGrok.isSuccess && !sgError && (
-            <p className="text-muted" style={{ fontSize: '0.8rem' }}>
-              Saved. Grok bar now shows your SuperGrok weekly % until you sync again.
-            </p>
-          )}
+                await applySnapshot({
+                  percent,
+                  build: sgBuild === '' ? undefined : Number(sgBuild),
+                  conversation: sgConversation === '' ? undefined : Number(sgConversation),
+                  resetAt: sgReset ? new Date(sgReset).toISOString() : undefined,
+                });
+              } catch (err) {
+                setSgError(err instanceof Error ? err.message : 'Sync failed');
+              }
+            }}
+          >
+            {superGrok.isPending ? 'Saving…' : 'Parse & apply'}
+          </button>
         </div>
-      )}
+
+        <div className="supergrok-sync-fields" style={{ marginTop: 12 }}>
+          <label>
+            Overall %
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.1}
+              value={sgPercent}
+              onChange={(e) => setSgPercent(e.target.value)}
+            />
+          </label>
+          <label>
+            Build %
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.1}
+              value={sgBuild}
+              onChange={(e) => setSgBuild(e.target.value)}
+            />
+          </label>
+          <label>
+            Conversation %
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.1}
+              value={sgConversation}
+              onChange={(e) => setSgConversation(e.target.value)}
+            />
+          </label>
+          <label>
+            Resets at
+            <input
+              type="datetime-local"
+              value={sgReset}
+              onChange={(e) => setSgReset(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn btn--primary btn--sm"
+            disabled={superGrok.isPending}
+            onClick={async () => {
+              setSgError(null);
+              setSgOk(null);
+              const percent = Number(sgPercent);
+              if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+                setSgError('Overall % must be 0–100');
+                return;
+              }
+              try {
+                await applySnapshot({
+                  percent,
+                  build: sgBuild === '' ? undefined : Number(sgBuild),
+                  conversation: sgConversation === '' ? undefined : Number(sgConversation),
+                  resetAt: sgReset ? new Date(sgReset).toISOString() : undefined,
+                });
+              } catch (err) {
+                setSgError(err instanceof Error ? err.message : 'Sync failed');
+              }
+            }}
+          >
+            {superGrok.isPending ? 'Saving…' : 'Apply SuperGrok %'}
+          </button>
+        </div>
+        {sgError && (
+          <p className="text-muted" style={{ color: 'var(--accent-red)' }}>
+            {sgError}
+          </p>
+        )}
+        {sgOk && !sgError && (
+          <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+            {sgOk}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

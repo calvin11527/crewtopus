@@ -78,7 +78,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <CreditUsage compact />
+      {/* Full SuperGrok sync form (not compact-only chips) so bookmarklet/paste works from home */}
+      <CreditUsage />
 
       <div className="dashboard-grid">
         <LiveFeed />

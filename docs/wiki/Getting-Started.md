@@ -76,6 +76,15 @@ npm run dev
 4. Add a **story** and run **Full lifecycle**.
 5. Watch **Live Activity** / the work-item console for CLI output.
 
+## SuperGrok usage (weekly limit)
+
+Grok SuperGrok is a **weekly** pool (Build + Conversation). Crewtopus cannot read grok.com live.
+
+1. Open [SuperGrok → Crewtopus helper](../assets/../supergrok-bookmarklet.md) or while the app runs: http://localhost:5173/supergrok-sync.html  
+2. Drag the bookmarklet to your bookmarks bar.  
+3. On the SuperGrok usage panel, click the bookmark — Crewtopus **Agents** opens and applies %.  
+4. Or paste the panel text into **Sync SuperGrok** on Dashboard / Agents.
+
 ## Over quota?
 
 If a provider blocks runs (budget / token limit):

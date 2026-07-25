@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import CreditUsage from './CreditUsage';
 import type { AgentCreditUsage } from '../types';
 
@@ -40,10 +41,15 @@ vi.mock('../api/hooks', () => ({
 
 describe('CreditUsage', () => {
   it('renders 78% total usage for mock grok data', () => {
-    render(<CreditUsage />);
+    render(
+      <MemoryRouter>
+        <CreditUsage />
+      </MemoryRouter>
+    );
     expect(screen.getByText('Grok', { selector: 'strong' })).toBeTruthy();
     expect(screen.getByText('78%')).toBeTruthy();
     expect(screen.getByText(/Total usage across all grok agents/i)).toBeTruthy();
     expect(screen.getByText(/Agent Credit Usage/i)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /Sync SuperGrok/i })).toBeTruthy();
   });
 });

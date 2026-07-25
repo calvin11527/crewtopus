@@ -16,6 +16,7 @@ import AgentCard from '../components/AgentCard';
 import AgentModelSelect from '../components/AgentModelSelect';
 import AgentSkillPicker from '../components/AgentSkillPicker';
 import AgentLearningPanel from '../components/AgentLearningPanel';
+import CreditUsage from '../components/CreditUsage';
 import Modal from '../components/Modal';
 import { AGENT_ROLE_LABELS } from '../constants/agent-roles';
 import { AGENT_TYPES, formatAgentType } from '../constants/agent-types';
@@ -482,6 +483,9 @@ export default function Agents() {
           </p>
         )}
       </section>
+
+      {/* Full credit panel + SuperGrok sync (bookmarklet lands on /agents) */}
+      <CreditUsage onConfigureAgent={(id) => openConfigureById(id)} />
 
       <AgentLearningPanel />
 

@@ -194,10 +194,10 @@ Providers rarely expose live billing APIs for CLI subscriptions. Crewtopus uses 
 
 1. **Immediate** — every agent run updates audit tokens and broadcasts `usage:update` over WebSocket  
 2. **Local CLI sessions** — Copilot `~/.copilot` shutdown events; Grok session files are diagnostic only (context peaks ≠ monthly bill)  
-3. **SuperGrok (Grok)** — **weekly** shared limit (Build + Conversation). Paste overall % / Build % / Conversation % / reset time from grok.com via **Sync SuperGrok** on Credit Usage. That % is the source of truth until you sync again (audit tokens no longer invent a false 100%+ monthly quota).  
+3. **SuperGrok (Grok)** — **weekly** shared limit (Build + Conversation). Use the [bookmarklet](./docs/supergrok-bookmarklet.md) or paste panel text into **Sync SuperGrok** on Credit Usage / Agents. That % is the source of truth until you sync again.  
 4. **Throttle signals** — rate-limit / quota errors surface live even when % looks fine  
 
-**Sync now** rescans local CLI session files. **Sync SuperGrok** is what makes Grok match the website.
+**Sync now** rescans local CLI session files. **Sync SuperGrok** (bookmarklet or paste) is what makes Grok match the website — helper UI also at `/supergrok-sync.html`.
 
 ### Self-improving agents
 

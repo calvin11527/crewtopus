@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SuperGrok → Crewtopus sync</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        background: #0a0a1a;
+        color: #e8e6e0;
+      }
+      body {
+        max-width: 640px;
+        margin: 40px auto;
+        padding: 0 16px;
+        line-height: 1.5;
+      }
+      a.bookmarklet {
+        display: inline-block;
+        margin: 12px 0;
+        padding: 12px 16px;
+        background: #4f6f8f;
+        color: #fff;
+        border-radius: 10px;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      code,
+      textarea {
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 120px;
+        background: #12122a;
+        color: #e8e6e0;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+        padding: 10px;
+      }
+      .muted {
+        color: #9898b8;
+        font-size: 0.9rem;
+      }
+      label {
+        display: block;
+        margin-top: 12px;
+        font-size: 0.85rem;
+        color: #9898b8;
+      }
+      input {
+        width: 100%;
+        padding: 8px;
+        margin-top: 4px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: #12122a;
+        color: #e8e6e0;
+      }
+      button {
+        margin-top: 12px;
+        padding: 10px 14px;
+        border: 0;
+        border-radius: 8px;
+        background: #7a9b7e;
+        color: #0a0a1a;
+        font-weight: 600;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>SuperGrok → Crewtopus</h1>
+    <p class="muted">
+      Drag the button to your bookmarks bar. On the SuperGrok usage page, click it to open Crewtopus
+      with weekly % filled in. There is no public SuperGrok billing API — this only reads page text.
+    </p>
+
+    <p>
+      <a
+        class="bookmarklet"
+        id="bm"
+        href="javascript:(function(){try{var t=(document.body&&document.body.innerText)||'';var getNear=function(re){var m=t.match(re);if(!m)return null;var i=m.index||0;var s=t.slice(i,i+120);var p=s.match(/(\d{1,3}(?:\.\d+)?)\s*%/);return p?Number(p[1]):null};var percent=getNear(/SuperGrok|每週\s*SuperGrok|每周\s*SuperGrok/i);var build=getNear(/Grok\s*Build|\bBuild\b/i);var conversation=getNear(/對話|对话|Conversation/i);if(percent==null&&build!=null&&conversation!=null)percent=Math.round((build+conversation)*10)/10;if(percent==null){alert('Could not find SuperGrok % on this page. Open the SuperGrok usage/limit panel first.');return}var resetAt;var zh=t.match(/重設[於于]\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*(早上|上午|中午|下午|晚上)?\s*(\d{1,2}):(\d{2})/);if(zh){var y=+zh[1],mo=+zh[2],d=+zh[3],h=+zh[5],mi=+zh[6],per=zh[4]||'';if(per==='下午'||per==='晚上'){if(h<12)h+=12}if(per==='上午'||per==='早上'){if(h===12)h=0}if(per==='中午'&&h<12)h=12;resetAt=new Date(y,mo-1,d,h,mi,0,0).toISOString()}var payload={percent:percent,build:build,conversation:conversation,resetAt:resetAt,capturedAt:new Date().toISOString(),page:location.href};try{navigator.clipboard.writeText(JSON.stringify(payload,null,2))}catch(e){}var base=localStorage.getItem('crewtopusUrl')||'http://localhost:5173';var u=new URL('/agents',base.endsWith('/')?base:base+'/');u.searchParams.set('supergrok','1');u.searchParams.set('percent',String(percent));if(build!=null)u.searchParams.set('build',String(build));if(conversation!=null)u.searchParams.set('conversation',String(conversation));if(resetAt)u.searchParams.set('reset',resetAt);window.open(u.toString(),'_blank')}catch(err){alert('SuperGrok sync failed: '+(err&&err.message?err.message:err))}})();"
+        >↻ Sync SuperGrok → Crewtopus</a
+      >
+    </p>
+
+    <label
+      >Crewtopus base URL (saved in this browser for the bookmarklet via
+      <code>localStorage.crewtopusUrl</code>)</label
+    >
+    <input id="base" value="http://localhost:5173" />
+    <button type="button" id="save">Save base URL</button>
+
+    <h2>Paste fallback</h2>
+    <p class="muted">Paste SuperGrok page text or bookmarklet JSON, then open Crewtopus.</p>
+    <textarea id="paste" placeholder="每週 SuperGrok 限制&#10;61%&#10;..."></textarea>
+    <button type="button" id="go">Parse & open Agents</button>
+    <pre id="out" class="muted"></pre>
+
+    <script>
+      const baseEl = document.getElementById('base');
+      baseEl.value = localStorage.getItem('crewtopusUrl') || 'http://localhost:5173';
+      document.getElementById('save').onclick = () => {
+        localStorage.setItem('crewtopusUrl', baseEl.value.trim() || 'http://localhost:5173');
+        alert('Saved. Bookmarklet will use: ' + localStorage.getItem('crewtopusUrl'));
+      };
+
+      // Minimal paste parser (mirrors frontend util for offline helper page)
+      function parse(text) {
+        try {
+          const j = JSON.parse(text);
+          if (j.percent != null) return j;
+        } catch (_) {}
+        const getNear = (re) => {
+          const m = text.match(re);
+          if (!m) return null;
+          const s = text.slice(m.index || 0, (m.index || 0) + 120);
+          const p = s.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
+          return p ? Number(p[1]) : null;
+        };
+        let percent = getNear(/SuperGrok|每週\s*SuperGrok|每周\s*SuperGrok/i);
+        const build = getNear(/Grok\s*Build|\bBuild\b/i);
+        const conversation = getNear(/對話|对话|Conversation/i);
+        if (percent == null && build != null && conversation != null) percent = build + conversation;
+        if (percent == null) return null;
+        let resetAt;
+        const zh = text.match(
+          /重設[於于]\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*(早上|上午|中午|下午|晚上)?\s*(\d{1,2}):(\d{2})/
+        );
+        if (zh) {
+          let h = +zh[5];
+          const per = zh[4] || '';
+          if (per === '下午' || per === '晚上') {
+            if (h < 12) h += 12;
+          }
+          if (per === '上午' || per === '早上') {
+            if (h === 12) h = 0;
+          }
+          resetAt = new Date(+zh[1], +zh[2] - 1, +zh[3], h, +zh[6], 0, 0).toISOString();
+        }
+        return { percent, build, conversation, resetAt };
+      }
+
+      document.getElementById('go').onclick = () => {
+        const snap = parse(document.getElementById('paste').value);
+        document.getElementById('out').textContent = snap
+          ? JSON.stringify(snap, null, 2)
+          : 'Could not parse';
+        if (!snap) return;
+        const base = baseEl.value.trim() || 'http://localhost:5173';
+        const u = new URL('/agents', base.endsWith('/') ? base : base + '/');
+        u.searchParams.set('supergrok', '1');
+        u.searchParams.set('percent', String(snap.percent));
+        if (snap.build != null) u.searchParams.set('build', String(snap.build));
+        if (snap.conversation != null) u.searchParams.set('conversation', String(snap.conversation));
+        if (snap.resetAt) u.searchParams.set('reset', snap.resetAt);
+        location.href = u.toString();
+      };
+    </script>
+  </body>
+</html>
