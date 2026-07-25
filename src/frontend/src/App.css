@@ -4117,6 +4117,30 @@ body {
   color: var(--jp-text-warm);
 }
 
+.supergrok-sync-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.supergrok-sync-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.supergrok-sync-fields input {
+  min-width: 110px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
 .credit-usage-header h3 {
   display: flex;
   align-items: center;

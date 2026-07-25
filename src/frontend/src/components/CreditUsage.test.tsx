@@ -31,6 +31,11 @@ vi.mock('../api/hooks', () => ({
     mutate: vi.fn(),
     isPending: false,
   }),
+  useSyncSuperGrokDashboard: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+    isSuccess: false,
+  }),
 }));
 
 describe('CreditUsage', () => {

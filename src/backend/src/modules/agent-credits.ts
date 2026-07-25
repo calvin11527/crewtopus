@@ -130,20 +130,83 @@ export function sumAuditTokensForAgentType(agentType: AgentType, since?: Date): 
   return row.token_count ?? 0;
 }
 
+export interface ProviderUsageSyncOptions {
+  /** SuperGrok overall weekly % (e.g. 61). */
+  dashboardPercent: number;
+  /** weekly SuperGrok (default for Grok) or monthly token quota model. */
+  period?: 'weekly' | 'monthly';
+  /** When SuperGrok limit resets (ISO or parseable datetime). */
+  resetAt?: string | null;
+  /** SuperGrok bucket breakdown: Build + Conversation. */
+  breakdown?: { build?: number; conversation?: number } | null;
+  /**
+   * dashboard_primary (default Grok): UI % = dashboard until next sync.
+   * token_quota (legacy): derive monthlyTokenQuota from audit tokens / %.
+   */
+  mode?: 'dashboard_primary' | 'token_quota';
+}
+
 /**
- * Snapshot provider dashboard % and derive a fixed monthly token quota.
+ * Sync provider dashboard usage into agent config.
  *
- * Grok: session signals are context-window peaks — calibrate from AgentHub audit tokens.
- * Copilot: shutdown events are cumulative usage — use provider scan.
+ * SuperGrok (Grok default): weekly shared limit with Build + Conversation buckets.
+ * There is no public live API — user pastes values from grok.com. That % is the
+ * source of truth until the next sync (audit tokens are secondary diagnostics).
+ *
+ * Copilot / legacy token_quota: still derive monthlyTokenQuota from local signals.
  */
 export function calibrateAgentProviderUsage(
   agentId: string,
-  dashboardPercent: number
+  dashboardPercent: number,
+  options: Omit<ProviderUsageSyncOptions, 'dashboardPercent'> = {}
 ): Agent | null {
   const agent = getAgent(agentId);
   if (!agent) return null;
-  if (dashboardPercent <= 0 || dashboardPercent > 100) {
+  if (dashboardPercent < 0 || dashboardPercent > 100) {
     throw new Error('providerUsagePercent must be between 0 and 100');
+  }
+
+  const mode =
+    options.mode ??
+    (agent.type === 'grok' ? 'dashboard_primary' : 'token_quota');
+  const period =
+    options.period ?? (agent.type === 'grok' && mode === 'dashboard_primary' ? 'weekly' : 'monthly');
+
+  let resetAt: string | undefined;
+  if (options.resetAt) {
+    const parsed = Date.parse(options.resetAt);
+    if (Number.isNaN(parsed)) {
+      throw new Error('providerResetAt must be a valid date/time');
+    }
+    resetAt = new Date(parsed).toISOString();
+  }
+
+  const breakdown = options.breakdown
+    ? {
+        build:
+          typeof options.breakdown.build === 'number' ? options.breakdown.build : undefined,
+        conversation:
+          typeof options.breakdown.conversation === 'number'
+            ? options.breakdown.conversation
+            : undefined,
+      }
+    : undefined;
+
+  if (mode === 'dashboard_primary') {
+    // Dashboard is truth — do not invent monthly token quotas that drift to 100%+.
+    return updateAgentConfig(agentId, {
+      providerUsagePercent: dashboardPercent,
+      providerUsagePeriod: period,
+      providerUsageMode: 'dashboard_primary',
+      providerPlan: agent.type === 'grok' ? 'supergrok' : agent.config.providerPlan,
+      providerResetAt: resetAt ?? null,
+      providerBreakdown: breakdown ?? null,
+      providerCalibratedAt: now(),
+      // Clear legacy token quota so audit growth cannot false-trigger over-budget.
+      monthlyTokenQuota: null,
+      providerCalibrationTokens: null,
+      providerCalibrationSource: 'dashboard',
+    });
   }
 
   const monthStart = startOfCurrentMonthUtc();
@@ -161,33 +224,51 @@ export function calibrateAgentProviderUsage(
     calibrationTokens = snapshot?.totalTokens ?? 0;
   }
 
-  if (!calibrationTokens || calibrationTokens <= 0) {
+  if ((!calibrationTokens || calibrationTokens <= 0) && dashboardPercent > 0) {
     throw new Error(
       agent.type === 'grok'
-        ? 'No AgentHub Grok audit tokens found this period. Run at least one Grok task in AgentHub before calibrating.'
+        ? 'No AgentHub Grok audit tokens found this period. Use SuperGrok dashboard sync (default) or run a Grok task first for token_quota mode.'
         : `No provider CLI session tokens found for ${agent.type}. Run the CLI at least once this month before calibrating.`
     );
   }
 
-  const monthlyTokenQuota = Math.round(calibrationTokens / (dashboardPercent / 100));
+  const monthlyTokenQuota =
+    dashboardPercent > 0
+      ? Math.round(calibrationTokens / (dashboardPercent / 100))
+      : undefined;
+
   return updateAgentConfig(agentId, {
     providerUsagePercent: dashboardPercent,
+    providerUsagePeriod: period,
+    providerUsageMode: 'token_quota',
     providerCalibrationTokens: calibrationTokens,
     providerCalibrationSource: calibrationSource,
-    monthlyTokenQuota,
+    monthlyTokenQuota: monthlyTokenQuota ?? null,
+    providerResetAt: resetAt ?? null,
+    providerBreakdown: breakdown ?? null,
     providerCalibratedAt: now(),
   });
 }
 
 function ensureLegacyProviderCalibration(group: Agent[], type: AgentType): void {
   const primary = pickPrimaryAgent(group);
+  // SuperGrok dashboard sync is complete — never rewrite it with token_quota math.
+  if (
+    primary.config.providerUsageMode === 'dashboard_primary' ||
+    primary.config.providerCalibrationSource === 'dashboard'
+  ) {
+    return;
+  }
   const percent = primary.config.providerUsagePercent;
   if (typeof percent !== 'number' || percent <= 0 || percent > 100) return;
   if (typeof primary.config.providerCalibrationTokens === 'number') return;
   if (typeof primary.config.monthlyTokenQuota === 'number' && primary.config.monthlyTokenQuota > 0) return;
 
   try {
-    calibrateAgentProviderUsage(primary.id, percent);
+    // Legacy path only: old configs that had % without a derived quota.
+    calibrateAgentProviderUsage(primary.id, percent, {
+      mode: type === 'grok' ? 'token_quota' : 'token_quota',
+    });
   } catch {
     /* best-effort migration for legacy configs */
   }
@@ -200,31 +281,80 @@ function buildTracking(
   providerTokens?: number,
   providerSessions?: number,
   monthlyQuota?: number,
-  dashboardPercent?: number
+  dashboardPercent?: number,
+  usageMode?: string,
+  usagePeriod?: string,
+  resetAt?: string,
+  breakdown?: { build?: number; conversation?: number }
 ): Pick<
   AgentCreditUsage,
-  'percentageUsed' | 'overBudget' | 'trackingSource' | 'trackingNote' | 'providerTokenCount' | 'providerSessionCount' | 'monthlyTokenQuota'
+  | 'percentageUsed'
+  | 'overBudget'
+  | 'trackingSource'
+  | 'trackingNote'
+  | 'providerTokenCount'
+  | 'providerSessionCount'
+  | 'monthlyTokenQuota'
+  | 'usagePeriod'
+  | 'providerResetAt'
+  | 'superGrokBreakdown'
 > {
   const providerTokenCount = providerTokens && providerTokens > 0 ? providerTokens : undefined;
   const providerSessionCount = providerSessions && providerSessions > 0 ? providerSessions : undefined;
   const monthlyTokenQuota = monthlyQuota;
+  const period = (usagePeriod === 'weekly' || usagePeriod === 'monthly' ? usagePeriod : undefined) as
+    | 'weekly'
+    | 'monthly'
+    | undefined;
+
+  // SuperGrok / dashboard-primary: website % is truth (weekly Build+Conversation pool).
+  if (
+    type === 'grok' &&
+    (usageMode === 'dashboard_primary' ||
+      (typeof dashboardPercent === 'number' &&
+        dashboardPercent >= 0 &&
+        dashboardPercent <= 100 &&
+        usageMode !== 'token_quota'))
+  ) {
+    if (typeof dashboardPercent === 'number' && dashboardPercent >= 0 && dashboardPercent <= 100) {
+      const parts: string[] = [];
+      if (breakdown?.build != null) parts.push(`Build ${breakdown.build}%`);
+      if (breakdown?.conversation != null) parts.push(`Conversation ${breakdown.conversation}%`);
+      const resetNote = resetAt
+        ? ` Resets ${new Date(resetAt).toLocaleString()}.`
+        : ' Set reset time when you sync from SuperGrok.';
+      return {
+        percentageUsed: dashboardPercent,
+        overBudget: dashboardPercent >= 100,
+        trackingSource: 'dashboard_primary',
+        trackingNote:
+          `SuperGrok weekly limit from last dashboard sync (${dashboardPercent}%)` +
+          (parts.length ? ` · ${parts.join(' · ')}` : '') +
+          `.${resetNote} ` +
+          `Crewtopus cannot read grok.com live — re-sync after you use Grok (site or CLI). ` +
+          (auditRequests > 0
+            ? `Local Crewtopus runs this month: ${auditRequests} · ~${auditTokens.toLocaleString()} estimated tokens (not SuperGrok %).`
+            : 'No Crewtopus Grok runs logged yet this month.'),
+        providerTokenCount,
+        providerSessionCount,
+        monthlyTokenQuota: undefined,
+        usagePeriod: period ?? 'weekly',
+        providerResetAt: resetAt,
+        superGrokBreakdown: breakdown,
+      };
+    }
+  }
 
   let trackingSource: UsageTrackingSource = 'none';
   let tokensForPercent = 0;
   let trackingNote: string | undefined;
 
-  // Grok session signals are context-window peaks, not monthly billable tokens.
-  // Always prefer AgentHub audit for Grok % / hard budget when a quota exists.
   if (type === 'grok') {
     if (auditTokens > 0 || monthlyTokenQuota) {
       trackingSource = 'agenthub_audit';
       tokensForPercent = auditTokens;
       trackingNote =
-        'Grok % uses AgentHub run audit tokens (not session context size). ' +
-        'Calibrate with your grok.com dashboard % so the monthly quota matches your real plan.';
-      if (providerSessionCount) {
-        trackingNote += ` Local CLI shows ${providerSessionCount} session(s); max context peak ${providerTokenCount?.toLocaleString() ?? 0} tokens (not billable total).`;
-      }
+        'Legacy token-quota mode. Prefer SuperGrok dashboard sync (weekly %) for true plan limits.';
     }
   } else if (providerTokenCount) {
     trackingSource = 'provider';
@@ -242,18 +372,20 @@ function buildTracking(
   }
 
   if (!monthlyTokenQuota) {
-    // Soft display: if user entered dashboard % without enough data for quota, show that % (never hard-block).
-    if (typeof dashboardPercent === 'number' && dashboardPercent > 0 && dashboardPercent <= 100) {
+    if (typeof dashboardPercent === 'number' && dashboardPercent >= 0 && dashboardPercent <= 100) {
       return {
         percentageUsed: dashboardPercent,
-        overBudget: false,
-        trackingSource: trackingSource === 'none' ? 'agenthub_audit' : trackingSource,
+        overBudget: dashboardPercent >= 100,
+        trackingSource: 'dashboard_primary',
         trackingNote:
           trackingNote ??
-          `Showing last calibrated dashboard usage (${dashboardPercent}%). Run calibrate again after more AgentHub usage to track live %.`,
+          `Showing last synced dashboard usage (${dashboardPercent}%). Re-sync from the provider site after more usage.`,
         providerTokenCount,
         providerSessionCount,
         monthlyTokenQuota,
+        usagePeriod: period,
+        providerResetAt: resetAt,
+        superGrokBreakdown: breakdown,
       };
     }
     return {
@@ -263,18 +395,20 @@ function buildTracking(
       trackingNote:
         trackingNote ??
         (type === 'grok'
-          ? 'Sync with grok.com: set providerUsagePercent to your dashboard % (e.g. 50). That calibrates monthly quota from AgentHub Grok audit totals.'
+          ? 'Sync SuperGrok weekly % from grok.com (e.g. 61% with Build 59% + Conversation 2%). That is the real plan limit — not monthly audit tokens.'
           : type === 'copilot'
-            ? 'Sync with the Copilot dashboard by PATCHing agent config providerUsagePercent to calibrate monthly quota.'
+            ? 'Sync with the Copilot dashboard by setting providerUsagePercent to calibrate monthly quota.'
             : 'Set monthlyTokenQuota or providerUsagePercent in agent config to show provider-aligned usage %.'),
       providerTokenCount,
       providerSessionCount,
       monthlyTokenQuota,
+      usagePeriod: period,
+      providerResetAt: resetAt,
+      superGrokBreakdown: breakdown,
     };
   }
 
   const pct = percentageUsed(tokensForPercent, monthlyTokenQuota);
-  // Never hard-block solely from stale Grok session sums; audit/quota comparison only.
   const overBudget = tokensForPercent > monthlyTokenQuota;
 
   return {
@@ -285,6 +419,9 @@ function buildTracking(
     providerTokenCount,
     providerSessionCount,
     monthlyTokenQuota,
+    usagePeriod: period,
+    providerResetAt: resetAt,
+    superGrokBreakdown: breakdown,
   };
 }
 
@@ -359,8 +496,33 @@ export function getAgentCreditUsage(): AgentCreditUsage[] {
     ensureLegacyProviderCalibration(group, type);
     const refreshedGroup = refreshAgentGroup(group);
     const monthlyQuota = resolveEffectiveMonthlyQuota(refreshedGroup, type);
-    const dashboardPercent = pickPrimaryAgent(refreshedGroup).config.providerUsagePercent;
-    const calibratedAt = pickPrimaryAgent(refreshedGroup).config.providerCalibratedAt as string | undefined;
+    const primaryCfg = pickPrimaryAgent(refreshedGroup).config;
+    const dashboardPercent = primaryCfg.providerUsagePercent;
+    const calibratedAt = primaryCfg.providerCalibratedAt as string | undefined;
+    const usageMode = primaryCfg.providerUsageMode as string | undefined;
+    const usagePeriod = primaryCfg.providerUsagePeriod as string | undefined;
+    const resetAt =
+      typeof primaryCfg.providerResetAt === 'string' ? primaryCfg.providerResetAt : undefined;
+    const rawBreakdown = primaryCfg.providerBreakdown as
+      | { build?: number; conversation?: number }
+      | null
+      | undefined;
+    const breakdown =
+      rawBreakdown && typeof rawBreakdown === 'object'
+        ? {
+            build: typeof rawBreakdown.build === 'number' ? rawBreakdown.build : undefined,
+            conversation:
+              typeof rawBreakdown.conversation === 'number' ? rawBreakdown.conversation : undefined,
+          }
+        : undefined;
+
+    // SuperGrok dashboard mode: ignore legacy monthlyTokenQuota for display/block.
+    const quotaForTracking =
+      type === 'grok' &&
+      (usageMode === 'dashboard_primary' ||
+        (typeof dashboardPercent === 'number' && usageMode !== 'token_quota'))
+        ? undefined
+        : monthlyQuota;
 
     const tracking = buildTracking(
       type,
@@ -368,8 +530,12 @@ export function getAgentCreditUsage(): AgentCreditUsage[] {
       auditRequests,
       providerTokens,
       providerSessions,
-      monthlyQuota,
-      typeof dashboardPercent === 'number' ? dashboardPercent : undefined
+      quotaForTracking,
+      typeof dashboardPercent === 'number' ? dashboardPercent : undefined,
+      usageMode,
+      usagePeriod,
+      resetAt,
+      breakdown
     );
 
     // Provider/audit-aligned % when available; otherwise internal credit budget %.
@@ -380,9 +546,14 @@ export function getAgentCreditUsage(): AgentCreditUsage[] {
           ? percentageUsed(used, limit)
           : 0;
 
-    // Grok: do not hard-block on credit alone when token tracking says OK and credits are only estimates;
-    // still block when either credit or (audit-based) token quota is exceeded.
-    const overBudget = tracking.overBudget || creditOverBudget;
+    // SuperGrok dashboard mode: only dashboard % / throttle gates; ignore estimated credit cents.
+    const dashboardPrimary =
+      type === 'grok' &&
+      (usageMode === 'dashboard_primary' ||
+        (typeof dashboardPercent === 'number' && usageMode !== 'token_quota'));
+    const overBudget = dashboardPrimary
+      ? tracking.overBudget
+      : tracking.overBudget || creditOverBudget;
 
     const throttle = getThrottleSignal(type);
     const syncMeta = getUsageSyncMeta();
@@ -408,9 +579,12 @@ export function getAgentCreditUsage(): AgentCreditUsage[] {
       trackingNote: tracking.trackingNote,
       percentageUsed: percentage,
       providerDashboardPercent:
-        typeof dashboardPercent === 'number' && dashboardPercent > 0 ? dashboardPercent : undefined,
+        typeof dashboardPercent === 'number' && dashboardPercent >= 0 ? dashboardPercent : undefined,
       providerCalibratedAt: calibratedAt,
-      syncedAt: syncMeta.syncedAt,
+      usagePeriod: tracking.usagePeriod,
+      providerResetAt: tracking.providerResetAt,
+      superGrokBreakdown: tracking.superGrokBreakdown,
+      syncedAt: calibratedAt || syncMeta.syncedAt,
       throttleState: throttle?.state ?? 'ok',
       throttleMessage: throttle?.message,
       throttleAt: throttle?.at,

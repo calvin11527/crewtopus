@@ -91,8 +91,20 @@ export interface Agent {
   createdAt: string;
 }
 
-export type UsageTrackingSource = 'provider' | 'agenthub_audit' | 'none';
+export type UsageTrackingSource =
+  | 'provider'
+  | 'agenthub_audit'
+  | 'dashboard_primary'
+  | 'none';
 export type UsageThrottleState = 'ok' | 'throttled' | 'quota_exceeded';
+export type UsagePeriod = 'weekly' | 'monthly';
+
+export interface SuperGrokBreakdown {
+  /** SuperGrok "Grok Build" bucket % (coding/CLI). */
+  build?: number;
+  /** SuperGrok "Conversation" / chat bucket %. */
+  conversation?: number;
+}
 
 /** Per agent-type usage: provider signals when available, else AgentHub audit totals. */
 export interface AgentCreditUsage {
@@ -104,7 +116,7 @@ export interface AgentCreditUsage {
   creditLimit: number;
   creditsUsed: number;
   creditsRemaining: number;
-  /** Primary % — tokens used vs configured monthly token quota. */
+  /** Primary % — SuperGrok dashboard % for Grok when synced; else token/quota math. */
   percentageUsed: number;
   unlimited: boolean;
   overBudget: boolean;
@@ -114,13 +126,19 @@ export interface AgentCreditUsage {
   /** Tokens from provider CLI session signals (Grok ~/.grok/sessions), when available. */
   providerTokenCount?: number;
   providerSessionCount?: number;
-  /** User-configured monthly token quota (align with grok.com / provider dashboard). */
+  /** User-configured monthly token quota (legacy / non-SuperGrok). */
   monthlyTokenQuota?: number;
   /** Last dashboard % synced via providerUsagePercent calibration. */
   providerDashboardPercent?: number;
   /** ISO timestamp of the last providerUsagePercent calibration. */
   providerCalibratedAt?: string;
-  /** Which token total drives percentageUsed. */
+  /** SuperGrok weekly period vs calendar month. */
+  usagePeriod?: UsagePeriod;
+  /** When SuperGrok / plan limit resets (from user sync). */
+  providerResetAt?: string;
+  /** SuperGrok bucket breakdown when provided. */
+  superGrokBreakdown?: SuperGrokBreakdown;
+  /** Which token total / source drives percentageUsed. */
   trackingSource: UsageTrackingSource;
   trackingNote?: string;
   /** ISO time of last usage recompute / run / provider scan. */

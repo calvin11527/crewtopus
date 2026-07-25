@@ -191,6 +191,32 @@ export function useSyncAgentCredits() {
   });
 }
 
+/** Paste SuperGrok weekly % from grok.com (source of truth until next sync). */
+export function useSyncSuperGrokDashboard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      percent: number;
+      build?: number;
+      conversation?: number;
+      resetAt?: string;
+      agentId?: string;
+      agentType?: AgentType;
+    }) =>
+      api.post<{ usage: AgentCreditUsage[] }>('/agents/credits/dashboard-sync', {
+        ...body,
+        agentType: body.agentType ?? 'grok',
+      }),
+    onSuccess: (data) => {
+      if (data.usage) {
+        qc.setQueryData(queryKeys.agentCredits, data.usage);
+      }
+      qc.invalidateQueries({ queryKey: queryKeys.agentCredits });
+      qc.invalidateQueries({ queryKey: queryKeys.agents });
+    },
+  });
+}
+
 export function useCapabilityFacts(agentType?: AgentType) {
   return useQuery({
     queryKey: ['agents', 'learning', 'facts', agentType ?? 'all'] as const,

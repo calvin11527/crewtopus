@@ -533,21 +533,16 @@ export function generateUsageBasedSuggestions(): ImprovementSuggestion[] {
       );
     }
 
-    if (
-      entry.agentType === 'grok' &&
-      entry.trackingSource === 'agenthub_audit' &&
-      !entry.providerDashboardPercent &&
-      entry.tokenCount > 0
-    ) {
+    if (entry.agentType === 'grok' && entry.trackingSource !== 'dashboard_primary') {
       created.push(
         createImprovementSuggestion({
           agentType: 'grok',
-          title: 'Grok: calibrate dashboard % for accurate monthly quota',
+          title: 'Grok: sync SuperGrok weekly % from grok.com',
           body:
-            'Enter your current grok.com usage % in agent config (providerUsagePercent) so Crewtopus can derive a monthly token quota. ' +
-            'Without calibration, % is audit-only and may drift from the real dashboard.',
+            'SuperGrok uses a weekly shared limit (Build + Conversation), not monthly audit tokens. ' +
+            'On Credit Usage, open “Sync SuperGrok” and enter overall %, Build %, Conversation %, and reset time from the site (e.g. 61% = Build 59% + Conversation 2%).',
           severity: 'info',
-          evidence: { tokenCount: entry.tokenCount },
+          evidence: { tokenCount: entry.tokenCount, trackingSource: entry.trackingSource },
         })
       );
     }

@@ -114,7 +114,40 @@ describe('agent-credits', () => {
     expect(copilotUsage?.percentageUsed).toBe(50);
   });
 
-  it('calibrates a fixed monthly quota from providerUsagePercent using Grok audit tokens', () => {
+  it('syncs SuperGrok weekly dashboard % as source of truth (not audit drift)', () => {
+    const agents = listAgents();
+    const grok = agents.find((a) => a.type === 'grok');
+    expect(grok).toBeDefined();
+
+    const calibrated = calibrateAgentProviderUsage(grok!.id, 61, {
+      period: 'weekly',
+      resetAt: '2026-07-25T23:02:00+08:00',
+      breakdown: { build: 59, conversation: 2 },
+    });
+    expect(calibrated?.config.providerUsagePercent).toBe(61);
+    expect(calibrated?.config.providerUsageMode).toBe('dashboard_primary');
+    expect(calibrated?.config.providerUsagePeriod).toBe('weekly');
+    expect(calibrated?.config.providerBreakdown).toEqual({ build: 59, conversation: 2 });
+
+    logAuditEntry({
+      agentId: grok!.id,
+      agentType: 'grok',
+      contextHash: 'should-not-change-dashboard-pct',
+      tokenCount: 5_000_000,
+      cost: 50,
+    });
+
+    const usage = getAgentCreditUsage();
+    const grokUsage = usage.find((u) => u.agentType === 'grok');
+    expect(grokUsage?.percentageUsed).toBe(61);
+    expect(grokUsage?.trackingSource).toBe('dashboard_primary');
+    expect(grokUsage?.usagePeriod).toBe('weekly');
+    expect(grokUsage?.superGrokBreakdown).toEqual({ build: 59, conversation: 2 });
+    expect(grokUsage?.overBudget).toBe(false);
+    expect(grokUsage?.providerDashboardPercent).toBe(61);
+  });
+
+  it('legacy token_quota mode still derives monthly cap from audit for Grok', () => {
     const agents = listAgents();
     const grok = agents.find((a) => a.type === 'grok');
     expect(grok).toBeDefined();
@@ -127,7 +160,7 @@ describe('agent-credits', () => {
       cost: 1,
     });
 
-    const calibrated = calibrateAgentProviderUsage(grok!.id, 79);
+    const calibrated = calibrateAgentProviderUsage(grok!.id, 79, { mode: 'token_quota' });
     expect(calibrated?.config.monthlyTokenQuota).toBe(1_000_000);
     expect(calibrated?.config.providerCalibrationTokens).toBe(790_000);
     expect(calibrated?.config.providerCalibrationSource).toBe('agenthub_audit');
@@ -136,36 +169,6 @@ describe('agent-credits', () => {
     const grokUsage = usage.find((u) => u.agentType === 'grok');
     expect(grokUsage?.monthlyTokenQuota).toBe(1_000_000);
     expect(grokUsage?.percentageUsed).toBeCloseTo(79, 0);
-    expect(grokUsage?.providerDashboardPercent).toBe(79);
-  });
-
-  it('updates percentage when AgentHub audit tokens grow after calibration', () => {
-    const agents = listAgents();
-    const grok = agents.find((a) => a.type === 'grok');
-    expect(grok).toBeDefined();
-
-    logAuditEntry({
-      agentId: grok!.id,
-      agentType: 'grok',
-      contextHash: 'calibrate-base-2',
-      tokenCount: 790_000,
-      cost: 1,
-    });
-    calibrateAgentProviderUsage(grok!.id, 79);
-
-    logAuditEntry({
-      agentId: grok!.id,
-      agentType: 'grok',
-      contextHash: 'calibrate-growth',
-      tokenCount: 30_000,
-      cost: 0.1,
-    });
-
-    const usage = getAgentCreditUsage();
-    const grokUsage = usage.find((u) => u.agentType === 'grok');
-    expect(grokUsage?.tokenCount).toBe(820_000);
-    expect(grokUsage?.percentageUsed).toBeCloseTo(82, 0);
-    expect(grokUsage?.overBudget).toBe(false);
   });
 
   it('does not mark grok over-budget from large session context peaks alone', () => {
@@ -190,9 +193,10 @@ describe('agent-credits', () => {
       tokenCount: 100_000,
       cost: 0.5,
     });
+    // Explicit legacy token_quota mode (default SuperGrok mode uses dashboard % instead).
     updateAgentConfig(grok!.id, {
       monthlyTokenQuota: 1_000_000,
-      providerUsagePercent: 50,
+      providerUsageMode: 'token_quota',
     });
 
     expect(isAgentTypeOverBudget('grok')).toBe(false);

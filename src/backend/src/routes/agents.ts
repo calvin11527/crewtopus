@@ -19,7 +19,11 @@ import {
   assertValidRole,
 } from '../modules/agent-employment';
 import { getCapabilitiesForAgent, syncCapabilitiesForAgentType } from '../modules/capability-registry';
-import { calibrateAgentProviderUsage, getAgentCreditUsage } from '../modules/agent-credits';
+import {
+  calibrateAgentProviderUsage,
+  getAgentCreditUsage,
+  type ProviderUsageSyncOptions,
+} from '../modules/agent-credits';
 import { forceProviderRescan, getUsageSyncMeta } from '../modules/usage-meter';
 import {
   generateUsageBasedSuggestions,
@@ -66,6 +70,68 @@ router.post('/credits/sync', (_req: Request, res: Response) => {
     });
   } catch (err) {
     res.status(500).json({ message: (err as Error).message });
+  }
+});
+
+/**
+ * Sync SuperGrok / provider dashboard usage into an agent.
+ * Body: { agentId?, agentType?, percent, build?, conversation?, resetAt?, period?, mode? }
+ * Defaults: Grok → weekly dashboard_primary (matches SuperGrok site).
+ */
+router.post('/credits/dashboard-sync', (req: Request, res: Response) => {
+  try {
+    const body = req.body as {
+      agentId?: string;
+      agentType?: AgentType;
+      percent?: number;
+      build?: number;
+      conversation?: number;
+      resetAt?: string;
+      period?: 'weekly' | 'monthly';
+      mode?: 'dashboard_primary' | 'token_quota';
+    };
+    const percent = body.percent;
+    if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0 || percent > 100) {
+      res.status(400).json({
+        message:
+          'percent is required (0–100). Example SuperGrok: { "percent": 61, "build": 59, "conversation": 2, "resetAt": "2026-07-25T23:02:00" }',
+      });
+      return;
+    }
+
+    let agentId = body.agentId;
+    if (!agentId) {
+      const type = body.agentType && VALID_TYPES.includes(body.agentType) ? body.agentType : 'grok';
+      const match = listAgents().find((a) => a.type === type);
+      if (!match) {
+        res.status(404).json({ message: `No agent of type ${type} found` });
+        return;
+      }
+      agentId = match.id;
+    }
+
+    const opts: Omit<ProviderUsageSyncOptions, 'dashboardPercent'> = {
+      period: body.period,
+      resetAt: body.resetAt,
+      breakdown:
+        body.build != null || body.conversation != null
+          ? { build: body.build, conversation: body.conversation }
+          : undefined,
+      mode: body.mode,
+    };
+
+    const agent = calibrateAgentProviderUsage(agentId, percent, opts);
+    if (!agent) {
+      res.status(404).json({ message: 'Agent not found' });
+      return;
+    }
+    generateUsageBasedSuggestions();
+    res.json({
+      agent,
+      usage: getAgentCreditUsage(),
+    });
+  } catch (err) {
+    res.status(400).json({ message: (err as Error).message });
   }
 });
 
@@ -412,7 +478,7 @@ router.patch('/:id/config', (req: Request, res: Response) => {
   }
   if ('providerUsagePercent' in body) {
     const pct = body.providerUsagePercent;
-    if (typeof pct !== 'number' || !Number.isFinite(pct) || pct <= 0 || pct > 100) {
+    if (typeof pct !== 'number' || !Number.isFinite(pct) || pct < 0 || pct > 100) {
       res.status(400).json({ message: 'providerUsagePercent must be between 0 and 100' });
       return;
     }
@@ -434,9 +500,23 @@ router.patch('/:id/config', (req: Request, res: Response) => {
 
   try {
     if (typeof body.providerUsagePercent === 'number') {
-      agent = calibrateAgentProviderUsage(req.params.id, body.providerUsagePercent);
-      if ('model' in body) {
-        agent = updateAgentConfig(req.params.id, { model: body.model });
+      agent = calibrateAgentProviderUsage(req.params.id, body.providerUsagePercent, {
+        period: body.providerUsagePeriod as 'weekly' | 'monthly' | undefined,
+        resetAt: typeof body.providerResetAt === 'string' ? body.providerResetAt : undefined,
+        breakdown:
+          body.providerBreakdown && typeof body.providerBreakdown === 'object'
+            ? (body.providerBreakdown as { build?: number; conversation?: number })
+            : undefined,
+        mode: body.providerUsageMode as 'dashboard_primary' | 'token_quota' | undefined,
+      });
+      const rest = { ...body };
+      delete rest.providerUsagePercent;
+      delete rest.providerUsagePeriod;
+      delete rest.providerResetAt;
+      delete rest.providerBreakdown;
+      delete rest.providerUsageMode;
+      if (Object.keys(rest).length > 0) {
+        agent = updateAgentConfig(req.params.id, rest);
       }
     } else {
       agent = updateAgentConfig(req.params.id, body);

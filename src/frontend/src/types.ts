@@ -157,8 +157,11 @@ export interface AgentCreditUsage {
   monthlyTokenQuota?: number;
   providerDashboardPercent?: number;
   providerCalibratedAt?: string;
-  trackingSource?: 'provider' | 'agenthub_audit' | 'none';
+  trackingSource?: 'provider' | 'agenthub_audit' | 'dashboard_primary' | 'none';
   trackingNote?: string;
+  usagePeriod?: 'weekly' | 'monthly';
+  providerResetAt?: string;
+  superGrokBreakdown?: { build?: number; conversation?: number };
   syncedAt?: string;
   throttleState?: 'ok' | 'throttled' | 'quota_exceeded';
   throttleMessage?: string;

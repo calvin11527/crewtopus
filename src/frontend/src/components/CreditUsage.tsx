@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Coins, Bot, Info, Settings2, RefreshCw } from 'lucide-react';
-import { useAgentCredits, useSyncAgentCredits } from '../api/hooks';
+import { useAgentCredits, useSyncAgentCredits, useSyncSuperGrokDashboard } from '../api/hooks';
 import type { AgentCreditUsage, AgentType } from '../types';
 
 const AGENT_COLORS: Record<AgentType, string> = {
@@ -149,15 +150,37 @@ function CreditRow({
             re-sync <code>providerUsagePercent</code> on the agent (Agents page) to recalibrate.
           </p>
         )}
+      {entry.superGrokBreakdown &&
+        (entry.superGrokBreakdown.build != null ||
+          entry.superGrokBreakdown.conversation != null) && (
+          <p className="credit-usage-note">
+            SuperGrok buckets:{' '}
+            {entry.superGrokBreakdown.build != null && (
+              <strong>Build {entry.superGrokBreakdown.build}%</strong>
+            )}
+            {entry.superGrokBreakdown.build != null &&
+              entry.superGrokBreakdown.conversation != null &&
+              ' · '}
+            {entry.superGrokBreakdown.conversation != null && (
+              <strong>Conversation {entry.superGrokBreakdown.conversation}%</strong>
+            )}
+            {entry.providerResetAt && (
+              <span className="text-muted">
+                {' '}
+                · resets {new Date(entry.providerResetAt).toLocaleString()}
+              </span>
+            )}
+          </p>
+        )}
       {entry.throttleMessage && (
         <p className="credit-usage-note text-muted">
           Live provider signal: {entry.throttleMessage}
         </p>
       )}
-      {entry.agentType === 'grok' && (
+      {entry.agentType === 'grok' && entry.trackingSource !== 'dashboard_primary' && (
         <p className="credit-usage-note text-muted">
-          Grok % uses Crewtopus run audits + optional dashboard calibration — not session context
-          size. Remote grok.com billing is not a public live API; use Sync after runs.
+          SuperGrok is a <strong>weekly</strong> limit (Build + Conversation), not monthly audit
+          tokens. Use <strong>Sync SuperGrok</strong> below with numbers from grok.com.
         </p>
       )}
     </div>
@@ -173,6 +196,12 @@ interface CreditUsageProps {
 export default function CreditUsage({ compact = false, onConfigureAgent }: CreditUsageProps) {
   const { data: credits, isLoading, isError, dataUpdatedAt } = useAgentCredits();
   const sync = useSyncAgentCredits();
+  const superGrok = useSyncSuperGrokDashboard();
+  const [sgPercent, setSgPercent] = useState('61');
+  const [sgBuild, setSgBuild] = useState('59');
+  const [sgConversation, setSgConversation] = useState('2');
+  const [sgReset, setSgReset] = useState('2026-07-25T23:02');
+  const [sgError, setSgError] = useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -233,8 +262,8 @@ export default function CreditUsage({ compact = false, onConfigureAgent }: Credi
 
       {syncedAt && (
         <p className="credit-usage-sync-meta text-muted">
-          Last sync {new Date(syncedAt).toLocaleTimeString()} · Crewtopus tracks its own runs + local
-          CLI session files; provider web dashboards remain the billing source of truth.
+          Last sync {new Date(syncedAt).toLocaleString()} · SuperGrok has no public live API —
+          paste weekly % from grok.com for true plan usage.
         </p>
       )}
 
@@ -245,6 +274,91 @@ export default function CreditUsage({ compact = false, onConfigureAgent }: Credi
           {(compact ? sorted.slice(0, 4) : sorted).map((entry) => (
             <CreditRow key={entry.agentType} entry={entry} onConfigure={onConfigureAgent} />
           ))}
+        </div>
+      )}
+
+      {!compact && (
+        <div className="supergrok-sync card" style={{ marginTop: 16 }}>
+          <h4 style={{ margin: '0 0 8px', fontSize: '0.9rem' }}>Sync SuperGrok (weekly)</h4>
+          <p className="text-muted" style={{ fontSize: '0.8rem', margin: '0 0 10px' }}>
+            From grok.com: overall % · Build % · Conversation % · reset time. Example: 61% = Build
+            59% + Conversation 2%.
+          </p>
+          <div className="supergrok-sync-fields">
+            <label>
+              Overall %
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.1}
+                value={sgPercent}
+                onChange={(e) => setSgPercent(e.target.value)}
+              />
+            </label>
+            <label>
+              Build %
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.1}
+                value={sgBuild}
+                onChange={(e) => setSgBuild(e.target.value)}
+              />
+            </label>
+            <label>
+              Conversation %
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.1}
+                value={sgConversation}
+                onChange={(e) => setSgConversation(e.target.value)}
+              />
+            </label>
+            <label>
+              Resets at
+              <input
+                type="datetime-local"
+                value={sgReset}
+                onChange={(e) => setSgReset(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn--primary btn--sm"
+              disabled={superGrok.isPending}
+              onClick={async () => {
+                setSgError(null);
+                const percent = Number(sgPercent);
+                if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+                  setSgError('Overall % must be 0–100');
+                  return;
+                }
+                try {
+                  await superGrok.mutateAsync({
+                    percent,
+                    build: sgBuild === '' ? undefined : Number(sgBuild),
+                    conversation: sgConversation === '' ? undefined : Number(sgConversation),
+                    resetAt: sgReset ? new Date(sgReset).toISOString() : undefined,
+                    agentType: 'grok',
+                  });
+                } catch (err) {
+                  setSgError(err instanceof Error ? err.message : 'Sync failed');
+                }
+              }}
+            >
+              {superGrok.isPending ? 'Saving…' : 'Apply SuperGrok %'}
+            </button>
+          </div>
+          {sgError && <p className="text-muted" style={{ color: 'var(--accent-red)' }}>{sgError}</p>}
+          {superGrok.isSuccess && !sgError && (
+            <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+              Saved. Grok bar now shows your SuperGrok weekly % until you sync again.
+            </p>
+          )}
         </div>
       )}
     </div>
