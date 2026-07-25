@@ -219,9 +219,15 @@ cd src && npm test
 
 **First run:** if `npm run demo` fails with a connection-refused error, the backend isn't running. Start it first, then re-run the demo:
 
+**First run:** if `npm run demo` fails because the backend is not up, start the API/UI first in another terminal, then re-run the demo:
+
 ```bash
+# terminal 1
 cd src && npm run dev
-npm run demo
+
+# terminal 2
+cd src && npm run demo
+```
 
 ---
 
