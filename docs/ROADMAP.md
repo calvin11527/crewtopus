@@ -17,9 +17,12 @@ Living roadmap for adoption and product maturity. Order is intentional: **activa
 
 - [x] Real-time-ish credit usage (WS after runs, Sync now, throttle signals)
 - [x] Capability learning + improvement suggestions (opt-in apply)
-- [ ] Stronger cold start: empty DB → welcome sprint already staffed with Mock Agent
-- [ ] Clearer failure UX when a CLI adapter is missing (actionable error → switch adapter)
-- [ ] Export “sprint report” (what ran, verdicts, audit links) for sharing
+- [x] SuperGrok weekly bookmarklet + paste parser
+- [x] First-run onboarding wizard + board empty-state CTAs
+- [x] Auto adapter failover on quota + Apply suggestion type switch
+- [x] Optional API token auth (`CREWTOPUS_API_TOKEN`)
+- [x] Sprint report export (Board → Report)
+- [x] `/api/ready` readiness probe
 - [ ] Workspace onboarding wizard (pick folder → first story)
 - [ ] Optional file watchers for outside-Crewtopus CLI usage (`AGENTHUB_WATCH_PROVIDER_USAGE`)
 

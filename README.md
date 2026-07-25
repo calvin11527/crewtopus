@@ -218,8 +218,12 @@ See [docs/ROADMAP.md](./docs/ROADMAP.md).
 ## Documentation
 
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — setup, tests, PR tips  
+- [docs/COMPARISON.md](./docs/COMPARISON.md) — vs Cursor / Claude Code chat  
+- [docs/CASE_STUDY.md](./docs/CASE_STUDY.md) — share a real sprint  
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) — module map  
+- [docs/supergrok-bookmarklet.md](./docs/supergrok-bookmarklet.md) — SuperGrok weekly sync  
 - [docs/ROADMAP.md](./docs/ROADMAP.md) — near-term priorities  
-- [SECURITY.md](./SECURITY.md)  
+- [SECURITY.md](./SECURITY.md) · [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)  
 - [GitHub Wiki](https://github.com/calvin11527/crewtopus/wiki) · source in [`docs/wiki/`](./docs/wiki/)  
 - [src/README.md](./src/README.md) · [src/infra/README.md](./src/infra/README.md)
 

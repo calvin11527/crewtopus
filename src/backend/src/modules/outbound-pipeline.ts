@@ -18,6 +18,7 @@ import { generateId } from '../utils/helpers';
 import { getWorkspace } from './workspace';
 import { getWorkItem } from './work-items';
 import { assertAgentTypeWithinBudget } from './agent-credits';
+import { resolveOutboundAgentType } from './adapter-failover';
 import { resolveModelForAgent } from './agent-models';
 import { recordRunUsage, isProviderThrottleError, recordProviderThrottle } from './usage-meter';
 import { recordRunLearning } from './capability-learning';
@@ -156,6 +157,16 @@ async function executeAdapterOnce(
  * All outbound agent requests must pass through this pipeline.
  */
 export async function executeOutboundPipeline(request: OutboundRequest): Promise<OutboundResult> {
+  const failover = resolveOutboundAgentType({
+    requestedType: request.agentType,
+    agentId: request.agentId,
+    workItemId: request.workItemId,
+    allowFailover: process.env.CREWTOPUS_DISABLE_AUTO_FAILOVER !== 'true',
+  });
+  // Mutate request type when failover wins so the rest of the pipeline is consistent.
+  if (failover.failedOver) {
+    request = { ...request, agentType: failover.agentType };
+  }
   assertAgentTypeWithinBudget(request.agentType);
   const workItem = request.workItemId ? getWorkItem(request.workItemId) : null;
   const workspace = request.workspaceId ? getWorkspace(request.workspaceId) : null;

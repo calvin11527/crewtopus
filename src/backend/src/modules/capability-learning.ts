@@ -4,7 +4,7 @@
  */
 import { spawnSync } from 'child_process';
 import { getDatabase } from '../database';
-import { listAgents, updateAgentConfig, getAgent } from './agent-registry';
+import { listAgents, updateAgentConfig, updateAgent, getAgent } from './agent-registry';
 import { getAgentCreditUsage } from './agent-credits';
 import { generateId, now, parseJson } from '../utils/helpers';
 import type { AgentType } from '../types';
@@ -564,16 +564,28 @@ export function applyImprovementSuggestion(id: string): {
   const alt = suggestion.evidence.alternative as string | undefined;
 
   if (alt && suggestion.agentType) {
-    // Switch first matching agent of this type to the alternative adapter type via config note
-    // (type is a first-class column — use updateAgent if available; store preferredFailover).
+    // Real adapter switch (same agent id keeps sprint staffing) + preferred failover for next time.
     const agents = listAgents().filter((a) => a.type === suggestion.agentType);
     for (const agent of agents) {
-      updateAgentConfig(agent.id, {
-        preferredFailoverType: alt,
-        lastImprovementAppliedAt: now(),
-        lastImprovementId: id,
-      });
-      applied[agent.id] = { preferredFailoverType: alt };
+      try {
+        updateAgent(agent.id, {
+          type: alt as import('../types').AgentType,
+          config: {
+            preferredFailoverType: alt,
+            lastImprovementAppliedAt: now(),
+            lastImprovementId: id,
+            lastAutoFailoverFrom: suggestion.agentType,
+          },
+        });
+        applied[agent.id] = { type: alt, preferredFailoverType: alt };
+      } catch {
+        updateAgentConfig(agent.id, {
+          preferredFailoverType: alt,
+          lastImprovementAppliedAt: now(),
+          lastImprovementId: id,
+        });
+        applied[agent.id] = { preferredFailoverType: alt, typeSwitchFailed: true };
+      }
     }
   }
 

@@ -2,17 +2,33 @@ import type { WSMessage } from '../types';
 
 const API_BASE = '/api';
 
+/** Optional API token (matches CREWTOPUS_API_TOKEN / AGENTHUB_API_TOKEN on the server). */
+function resolveClientApiToken(): string | undefined {
+  try {
+    const fromLs = localStorage.getItem('crewtopusApiToken') || localStorage.getItem('agenthubApiToken');
+    if (fromLs?.trim()) return fromLs.trim();
+  } catch {
+    /* ignore */
+  }
+  const fromEnv = import.meta.env.VITE_CREWTOPUS_API_TOKEN || import.meta.env.VITE_AGENTHUB_API_TOKEN;
+  return typeof fromEnv === 'string' && fromEnv.trim() ? fromEnv.trim() : undefined;
+}
+
 /* ─── Generic Fetch Wrapper ─── */
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const token = resolveClientApiToken();
   const res = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(token
+        ? { Authorization: `Bearer ${token}`, 'X-Api-Token': token }
+        : {}),
       ...options.headers,
     },
-    ...options,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));

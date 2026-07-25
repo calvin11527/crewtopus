@@ -42,6 +42,7 @@ import { startResourceCleanup, stopResourceCleanup } from './modules/resource-cl
 import { closeRedisClient } from './modules/job-queue';
 import { startProviderUsageWatcher } from './modules/usage-meter';
 import { seedCapabilityLearning, capabilityLearningTick } from './modules/capability-learning';
+import { apiAuthMiddleware, resolveApiToken } from './middleware/api-auth';
 
 const PORT = Number(process.env.PORT) || 3000;
 const startTime = Date.now();
@@ -51,6 +52,9 @@ const server = http.createServer(app);
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// Optional Bearer / X-Api-Token auth (CREWTOPUS_API_TOKEN)
+app.use('/api', apiAuthMiddleware);
 
 app.use('/api', healthRouter);
 app.use('/api/workspaces', workspacesRouter);
@@ -125,6 +129,9 @@ server.listen(PORT, () => {
   console.log(`[AgentHub] Backend running on http://localhost:${PORT}`);
   console.log(`[AgentHub] WebSocket available at ws://localhost:${PORT}/ws`);
   console.log(`[AgentHub] Metrics available at http://localhost:${PORT}/metrics`);
+  if (resolveApiToken()) {
+    console.log('[AgentHub] API auth enabled (CREWTOPUS_API_TOKEN / AGENTHUB_API_TOKEN)');
+  }
 });
 
 async function shutdown(): Promise<void> {

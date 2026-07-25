@@ -14,6 +14,7 @@ import { wsClient } from './api/client';
 import { useAppStore } from './stores/useAppStore';
 import { useCliPreviewStore } from './stores/useCliPreviewStore';
 import { queryKeys } from './api/hooks';
+import OnboardingWizard from './components/OnboardingWizard';
 
 export default function App() {
   const addLiveEvent = useAppStore((s) => s.addLiveEvent);
@@ -111,17 +112,20 @@ export default function App() {
   }, [addLiveEvent, setConnectionStatus, setPendingJob, clearPendingJob, ingestCliPreview, qc]);
 
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="workspaces" element={<Workspaces />} />
-        <Route path="agents" element={<Agents />} />
-        <Route path="board" element={<Board />} />
-        <Route path="workflows" element={<Workflows />} />
-        <Route path="privacy" element={<Privacy />} />
-        <Route path="audit" element={<Audit />} />
-        <Route path="logs" element={<Logs />} />
-      </Route>
-    </Routes>
+    <>
+      <OnboardingWizard />
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="workspaces" element={<Workspaces />} />
+          <Route path="agents" element={<Agents />} />
+          <Route path="board" element={<Board />} />
+          <Route path="workflows" element={<Workflows />} />
+          <Route path="privacy" element={<Privacy />} />
+          <Route path="audit" element={<Audit />} />
+          <Route path="logs" element={<Logs />} />
+        </Route>
+      </Routes>
+    </>
   );
 }

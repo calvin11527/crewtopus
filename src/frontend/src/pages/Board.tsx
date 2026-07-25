@@ -72,6 +72,7 @@ import WorkItemAgentHistory from '../components/WorkItemAgentHistory';
 import KanbanCliPreview from '../components/KanbanCliPreview';
 import SprintTeamPanel from '../components/SprintTeamPanel';
 import LiveFeed from '../components/LiveFeed';
+import BoardEmptyState from '../components/BoardEmptyState';
 import { useWorkItemAgentConsole } from '../hooks/useWorkItemAgentConsole';
 import { useDragResize } from '../hooks/useDragResize';
 import { useCliPreviewStore } from '../stores/useCliPreviewStore';
@@ -1309,6 +1310,34 @@ export default function Board() {
             </button>
             <button
               type="button"
+              className="btn--board-action"
+              disabled={!selectedSprint}
+              title="Download sprint success report (markdown)"
+              onClick={async () => {
+                if (!selectedSprint) return;
+                try {
+                  const res = await fetch(`/api/work-items/sprints/${selectedSprint}/report`);
+                  if (!res.ok) throw new Error('Report failed');
+                  const data = (await res.json()) as { markdown?: string; sprint?: { name?: string } };
+                  const blob = new Blob([data.markdown ?? JSON.stringify(data, null, 2)], {
+                    type: 'text/markdown',
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `${(data.sprint?.name || 'sprint').replace(/\s+/g, '-')}-report.md`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  setActionNotice('Sprint report downloaded');
+                } catch (err) {
+                  setActionNotice(err instanceof Error ? err.message : 'Report failed');
+                }
+              }}
+            >
+              <FileText size={15} /> Report
+            </button>
+            <button
+              type="button"
               className={`btn--board-action${sprintAutomation?.automation.mode === 'autonomous' ? ' btn--board-action--active' : ''}`}
               onClick={handleToggleAutomation}
               disabled={!selectedSprint || setSprintAutomation.isPending}
@@ -1577,6 +1606,13 @@ export default function Board() {
         <div className="board-layout-main">
           {isLoading ? (
             <p className="loading-text">Loading board...</p>
+          ) : (board?.totals?.items ?? 0) === 0 ? (
+            <BoardEmptyState
+              hasSprint={Boolean(selectedSprint)}
+              onMultiAgentDemo={() => void handleMultiAgentDemo()}
+              onStaffTeam={() => setStaffOpen(true)}
+              demoPending={createDemo.isPending || runPipeline.isPending}
+            />
           ) : (
             <div className="kanban-board">
               {COLUMNS.map((col) => (

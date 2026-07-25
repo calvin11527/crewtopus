@@ -43,6 +43,7 @@ import {
   runEpicOrchestration,
   summarizeEpic,
 } from '../modules/epic-orchestration';
+import { buildSprintReport } from '../modules/sprint-report';
 import {
   getStoryQueueRun,
   resolveStoryQueueItems,
@@ -86,6 +87,24 @@ router.get('/sprints/:id', (req: Request, res: Response) => {
     return;
   }
   res.json(sprint);
+});
+
+/** Shareable sprint success report (JSON + markdown). */
+router.get('/sprints/:id/report', (req: Request, res: Response) => {
+  try {
+    const report = buildSprintReport(req.params.id);
+    if (!report) {
+      res.status(404).json({ message: 'Sprint not found' });
+      return;
+    }
+    if (req.query.format === 'markdown' || req.headers.accept?.includes('text/markdown')) {
+      res.type('text/markdown').send(report.markdown);
+      return;
+    }
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ message: (err as Error).message });
+  }
 });
 
 router.patch('/sprints/:id', (req: Request, res: Response) => {

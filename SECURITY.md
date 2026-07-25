@@ -38,6 +38,21 @@ Agent adapters may invoke CLI tools (Grok, Copilot, Claude, Ollama, etc.) with *
 - Do **not** expose the backend HTTP/WebSocket API to the public internet without authentication, network isolation, and a hardened deployment plan.
 - Default assumption: anyone who can call the API can trigger agent runs that modify files and execute tools.
 
+### Optional API authentication
+
+Set **`CREWTOPUS_API_TOKEN`** (or `AGENTHUB_API_TOKEN`) on the backend. Clients must send:
+
+```http
+Authorization: Bearer <token>
+```
+
+or `X-Api-Token: <token>`.
+
+Frontend: store the same value in `localStorage.crewtopusApiToken` or set `VITE_CREWTOPUS_API_TOKEN` at build time.
+
+- `/api/health` and `/api/ready` remain open for probes unless `CREWTOPUS_AUTH_LOCKDOWN=true`.
+- Prefer binding to localhost and using a reverse proxy with TLS if you leave the LAN.
+
 ### Secrets and privacy
 
 - Crewtopus includes a **privacy guard** that scans for common secret patterns in context. It is a best-effort control, not a guarantee.
