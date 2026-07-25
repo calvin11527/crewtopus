@@ -4251,6 +4251,76 @@ body {
   margin-top: 16px;
 }
 
+.credit-usage-note--stale {
+  color: var(--accent-amber) !important;
+  border-left: 2px solid var(--accent-amber);
+  padding-left: 8px;
+}
+
+/* Command palette */
+.cmd-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(5, 5, 16, 0.65);
+  display: flex;
+  justify-content: center;
+  padding-top: 12vh;
+}
+
+.cmd-palette {
+  width: min(520px, 92vw);
+  max-height: 60vh;
+  overflow: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  padding: 12px;
+}
+
+.cmd-palette input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 1rem;
+  margin-bottom: 8px;
+}
+
+.cmd-palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cmd-palette-list li button {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cmd-palette-list li button:hover,
+.cmd-palette-list li button.cmd-active {
+  background: var(--bg-glass-hover);
+}
+
+.cmd-palette-list .cmd-hint {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
 .supergrok-sync-fields label {
   display: flex;
   flex-direction: column;

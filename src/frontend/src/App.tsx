@@ -15,6 +15,7 @@ import { useAppStore } from './stores/useAppStore';
 import { useCliPreviewStore } from './stores/useCliPreviewStore';
 import { queryKeys } from './api/hooks';
 import OnboardingWizard from './components/OnboardingWizard';
+import CommandPalette from './components/CommandPalette';
 
 export default function App() {
   const addLiveEvent = useAppStore((s) => s.addLiveEvent);
@@ -114,6 +115,7 @@ export default function App() {
   return (
     <>
       <OnboardingWizard />
+      <CommandPalette />
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Dashboard />} />

@@ -130,6 +130,26 @@ export function sumAuditTokensForAgentType(agentType: AgentType, since?: Date): 
   return row.token_count ?? 0;
 }
 
+/** Count audit rows for an agent type since a date. */
+export function countAuditRunsForAgentType(agentType: AgentType, since?: Date): number {
+  const db = getDatabase();
+  if (since) {
+    const row = db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM audit_log WHERE agent_type = ? AND timestamp >= ?`
+      )
+      .get(agentType, since.toISOString()) as { c: number };
+    return row.c ?? 0;
+  }
+  const row = db
+    .prepare(`SELECT COUNT(*) AS c FROM audit_log WHERE agent_type = ?`)
+    .get(agentType) as { c: number };
+  return row.c ?? 0;
+}
+
+const DASHBOARD_STALE_HOURS = Number(process.env.CREWTOPUS_DASHBOARD_STALE_HOURS) || 12;
+const DASHBOARD_STALE_RUNS = Number(process.env.CREWTOPUS_DASHBOARD_STALE_RUNS) || 3;
+
 export interface ProviderUsageSyncOptions {
   /** SuperGrok overall weekly % (e.g. 61). */
   dashboardPercent: number;
@@ -588,10 +608,37 @@ export function getAgentCreditUsage(): AgentCreditUsage[] {
       throttleState: throttle?.state ?? 'ok',
       throttleMessage: throttle?.message,
       throttleAt: throttle?.at,
+      ...computeDashboardStaleness(type, calibratedAt, tracking.trackingSource),
     });
   }
 
   return results.sort((a, b) => a.agentType.localeCompare(b.agentType));
+}
+
+function computeDashboardStaleness(
+  type: AgentType,
+  calibratedAt: string | undefined,
+  trackingSource: UsageTrackingSource
+): Pick<
+  AgentCreditUsage,
+  'dashboardAgeHours' | 'dashboardStale' | 'runsSinceDashboardSync' | 'tokensSinceDashboardSync'
+> {
+  if (type !== 'grok' || trackingSource !== 'dashboard_primary' || !calibratedAt) {
+    return {};
+  }
+  const calMs = Date.parse(calibratedAt);
+  if (Number.isNaN(calMs)) return {};
+  const ageHours = Math.round(((Date.now() - calMs) / 3_600_000) * 10) / 10;
+  const since = new Date(calMs);
+  const runsSince = countAuditRunsForAgentType('grok', since);
+  const tokensSince = sumAuditTokensForAgentType('grok', since);
+  const stale = ageHours >= DASHBOARD_STALE_HOURS || runsSince >= DASHBOARD_STALE_RUNS;
+  return {
+    dashboardAgeHours: ageHours,
+    dashboardStale: stale,
+    runsSinceDashboardSync: runsSince,
+    tokensSinceDashboardSync: tokensSince,
+  };
 }
 
 export class CreditBudgetExceededError extends Error {

@@ -67,23 +67,26 @@ That builds the lean stack (API + UI only), waits for health, runs a **mock** im
 ./demo.sh down   # stop
 ```
 
-### Option B — local Node (~60s)
+### Option B — local one-shot (`./quickstart.sh`)
 
 **Requirements:** Node.js ≥ 20, npm.
 
 ```bash
 git clone https://github.com/calvin11527/crewtopus.git
-cd crewtopus/src
-npm run setup          # installs workspaces
-npm run dev            # API http://localhost:3000 · UI http://localhost:5173
+cd crewtopus
+./quickstart.sh        # install + dev + open browser + mock demo
 ```
 
-In a **second terminal** (with `dev` still running):
+Or step-by-step:
 
 ```bash
 cd crewtopus/src
-npm run demo           # mock implement → test → review → approved
+npm run setup && npm run dev
+# second terminal:
+npm run demo
 ```
+
+Keyboard: **⌘K / Ctrl+K** command palette · SuperGrok helper: `/supergrok-sync.html`
 
 | Service | URL |
 |---------|-----|

@@ -145,6 +145,9 @@ describe('agent-credits', () => {
     expect(grokUsage?.superGrokBreakdown).toEqual({ build: 59, conversation: 2 });
     expect(grokUsage?.overBudget).toBe(false);
     expect(grokUsage?.providerDashboardPercent).toBe(61);
+    // One run after sync → stale by run count threshold (default 3 needs more)
+    expect(grokUsage?.runsSinceDashboardSync).toBeGreaterThanOrEqual(1);
+    expect(grokUsage?.tokensSinceDashboardSync).toBeGreaterThanOrEqual(5_000_000);
   });
 
   it('legacy token_quota mode still derives monthly cap from audit for Grok', () => {

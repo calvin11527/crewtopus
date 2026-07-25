@@ -189,6 +189,19 @@ function CreditRow({
           tokens. Use <strong>Sync SuperGrok</strong> below with numbers from grok.com.
         </p>
       )}
+      {entry.dashboardStale && (
+        <p className="credit-usage-note credit-usage-note--stale">
+          SuperGrok sync is stale
+          {entry.dashboardAgeHours != null ? ` (${entry.dashboardAgeHours}h old)` : ''}
+          {entry.runsSinceDashboardSync
+            ? ` · ${entry.runsSinceDashboardSync} Crewtopus run(s) since sync`
+            : ''}
+          {entry.tokensSinceDashboardSync
+            ? ` · ~${formatTokens(entry.tokensSinceDashboardSync)} est. tokens`
+            : ''}
+          . Re-sync from grok.com (bookmarklet or paste) for true %.
+        </p>
+      )}
     </div>
   );
 }

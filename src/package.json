@@ -19,6 +19,7 @@
   "scripts": {
     "setup": "npm install",
     "demo": "node scripts/run-mock-demo.mjs",
+    "quickstart": "bash ../quickstart.sh",
     "demo:docker": "bash ../demo.sh",
     "demo:docker:down": "bash ../demo.sh down",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",

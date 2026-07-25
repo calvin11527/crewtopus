@@ -59,15 +59,21 @@ import { WebSocketClient } from './websocket-client';
 /** In dev, connect straight to the backend so Vite restarts do not break the app socket. */
 function resolveWebSocketUrl(): string {
   const configured = import.meta.env.VITE_WS_URL;
-  if (configured) return configured;
-
-  if (import.meta.env.DEV) {
+  let base: string;
+  if (configured) {
+    base = configured;
+  } else if (import.meta.env.DEV) {
     const port = import.meta.env.VITE_BACKEND_PORT ?? '3000';
-    return `ws://localhost:${port}/ws`;
+    base = `ws://localhost:${port}/ws`;
+  } else {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    base = `${wsProtocol}//${window.location.host}/ws`;
   }
 
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${wsProtocol}//${window.location.host}/ws`;
+  const token = resolveClientApiToken();
+  if (!token) return base;
+  const sep = base.includes('?') ? '&' : '?';
+  return `${base}${sep}token=${encodeURIComponent(token)}`;
 }
 
 export const wsClient = new WebSocketClient(resolveWebSocketUrl());

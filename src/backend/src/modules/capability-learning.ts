@@ -460,6 +460,37 @@ export function recordRunLearning(input: {
     source: input.success ? 'run_outcome' : 'error',
   });
 
+  // Rolling success stats (self-improvement signal for suggestions).
+  const statsKey = 'run_stats';
+  const existing = listCapabilityFacts(type).find((f) => f.factKey === statsKey);
+  const prev = (existing?.factValue as { ok?: number; fail?: number; tokens?: number }) || {};
+  const ok = (prev.ok ?? 0) + (input.success ? 1 : 0);
+  const fail = (prev.fail ?? 0) + (input.success ? 0 : 1);
+  const tokens = (prev.tokens ?? 0) + (input.tokenCount ?? 0);
+  upsertCapabilityFact({
+    agentType: type,
+    factKey: statsKey,
+    factValue: {
+      ok,
+      fail,
+      tokens,
+      successRate: ok + fail > 0 ? Math.round((ok / (ok + fail)) * 1000) / 10 : 0,
+      updatedAt: now(),
+    },
+    confidence: 0.9,
+    source: 'run_outcome',
+  });
+
+  if (ok + fail >= 5 && fail / (ok + fail) >= 0.4) {
+    createImprovementSuggestion({
+      agentType: type,
+      title: `${type}: high failure rate (${Math.round((fail / (ok + fail)) * 100)}%)`,
+      body: `Recent runs: ${ok} ok / ${fail} failed. Check CLI auth, model id, and SuperGrok/Copilot quota. Consider switching adapter or re-probing capabilities.`,
+      severity: 'warn',
+      evidence: { ok, fail, tokens },
+    });
+  }
+
   if (input.model) {
     upsertCapabilityFact({
       agentType: type,

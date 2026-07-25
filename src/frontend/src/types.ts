@@ -166,6 +166,10 @@ export interface AgentCreditUsage {
   throttleState?: 'ok' | 'throttled' | 'quota_exceeded';
   throttleMessage?: string;
   throttleAt?: string;
+  dashboardAgeHours?: number;
+  dashboardStale?: boolean;
+  runsSinceDashboardSync?: number;
+  tokensSinceDashboardSync?: number;
 }
 
 export interface CapabilityFact {

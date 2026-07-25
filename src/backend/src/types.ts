@@ -147,6 +147,14 @@ export interface AgentCreditUsage {
   throttleState?: UsageThrottleState;
   throttleMessage?: string;
   throttleAt?: string;
+  /** Hours since SuperGrok/dashboard sync (dashboard_primary). */
+  dashboardAgeHours?: number;
+  /** True when sync is older than threshold (default 12h) or many runs since sync. */
+  dashboardStale?: boolean;
+  /** Crewtopus Grok audit runs after last dashboard sync. */
+  runsSinceDashboardSync?: number;
+  /** Estimated audit tokens after last dashboard sync. */
+  tokensSinceDashboardSync?: number;
 }
 
 /* ─── Capability Registry (Module C) ─── */

@@ -48,7 +48,7 @@ export default function Layout() {
           />
           <div>
             <h1 className="logo-title">Crewtopus</h1>
-            <p className="logo-subtitle">Many AI arms. One crew.</p>
+            <p className="logo-subtitle">Many AI arms. One crew. · ⌘K</p>
           </div>
         </div>
 

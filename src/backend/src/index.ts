@@ -125,12 +125,21 @@ const learningTimer = setInterval(() => {
 }, Number(process.env.AGENTHUB_LEARNING_TICK_MS) || 6 * 60 * 60 * 1000);
 learningTimer.unref?.();
 
-server.listen(PORT, () => {
-  console.log(`[AgentHub] Backend running on http://localhost:${PORT}`);
-  console.log(`[AgentHub] WebSocket available at ws://localhost:${PORT}/ws`);
-  console.log(`[AgentHub] Metrics available at http://localhost:${PORT}/metrics`);
+// Prefer localhost for single-user machines; set HOST=0.0.0.0 only when intentional.
+const HOST = process.env.HOST || process.env.CREWTOPUS_HOST || '127.0.0.1';
+
+server.listen(PORT, HOST, () => {
+  console.log(`[Crewtopus] Backend running on http://${HOST}:${PORT}`);
+  console.log(`[Crewtopus] WebSocket available at ws://${HOST}:${PORT}/ws`);
+  console.log(`[Crewtopus] Metrics available at http://${HOST}:${PORT}/metrics`);
+  console.log(`[Crewtopus] Readiness: http://${HOST}:${PORT}/api/ready`);
   if (resolveApiToken()) {
-    console.log('[AgentHub] API auth enabled (CREWTOPUS_API_TOKEN / AGENTHUB_API_TOKEN)');
+    console.log('[Crewtopus] API + WS auth enabled (CREWTOPUS_API_TOKEN)');
+  }
+  if (HOST !== '127.0.0.1' && HOST !== 'localhost' && !resolveApiToken()) {
+    console.warn(
+      '[Crewtopus] WARNING: listening on non-localhost without CREWTOPUS_API_TOKEN — anyone on the network can run agents'
+    );
   }
 });
 
