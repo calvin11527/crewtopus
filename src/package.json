@@ -59,7 +59,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "playwright": "^1.61.1"
+    "playwright": "^1.62.1"
   },
   "overrides": {
     "shell-quote": "1.9.0",
