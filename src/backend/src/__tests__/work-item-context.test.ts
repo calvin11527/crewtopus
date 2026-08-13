@@ -201,4 +201,31 @@ describe('Work Item Context (M3)', () => {
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  it('should not fail outbound privacy when the workspace root has .env.example', () => {
+    const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-envex-'));
+    fs.writeFileSync(
+      path.join(repoDir, '.env.example'),
+      'PORT=3000\n# API_KEY=your_key_here\nOLLAMA_HOST=http://localhost:11434\n'
+    );
+    fs.writeFileSync(path.join(repoDir, 'README.md'), '# App\nCopy .env.example to .env\n');
+
+    const workspace = createWorkspace('Env example workspace');
+    addRepository(workspace.id, 'app', repoDir);
+    const item = createWorkItem({
+      type: 'story',
+      title: 'AH-9 env example',
+      workspaceId: workspace.id,
+      assignedAgentType: 'grok',
+    });
+
+    const { scope, auditFilePaths, basePath } = buildWorkItemContextScope(item, repoDir);
+    expect(auditFilePaths.some((p) => p.replace(/\\/g, '/').endsWith('.env.example'))).toBe(true);
+
+    const privacy = runPrivacyGuard(scope, 'grok', auditFilePaths, basePath, workspace.id);
+    expect(privacy.passed).toBe(true);
+    expect(privacy.blockedReasons.join('; ')).not.toContain('.env.example');
+
+    fs.rmSync(repoDir, { recursive: true, force: true });
+  });
 });

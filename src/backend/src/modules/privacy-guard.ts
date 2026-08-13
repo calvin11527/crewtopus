@@ -3,6 +3,7 @@ import type { ContextScope, AgentType } from '../types';
 import { getDatabase } from '../database';
 import { parseJson } from '../utils/helpers';
 import { getWorkspace } from './workspace';
+import { isEnvTemplatePath } from './context-path-filters';
 
 export type SecretType =
   | 'api_key'
@@ -176,7 +177,9 @@ export function sanitizePaths(filePaths: string[], basePath?: string): { safe: s
     const resolved = path.isAbsolute(filePath) ? filePath : path.join(base, filePath);
     const rel = path.relative(base, resolved);
 
-    const isBlocked = BLOCKED_PATH_PATTERNS.some((p) => p.test(rel) || p.test(resolved));
+    const isBlocked =
+      !isEnvTemplatePath(rel) &&
+      BLOCKED_PATH_PATTERNS.some((p) => p.test(rel) || p.test(resolved));
     if (isBlocked) {
       blocked.push(rel);
       continue;
@@ -251,6 +254,7 @@ export function contextFilePath(fileBlock: string): string {
 
 function pathMatchesBlockPattern(relPath: string, pattern: string): boolean {
   const normalized = relPath.split(path.sep).join('/');
+  if (pattern === '.env' && isEnvTemplatePath(normalized)) return false;
   if (pattern.startsWith('.')) {
     const base = path.basename(normalized);
     return base === pattern || base.startsWith(`${pattern}.`);

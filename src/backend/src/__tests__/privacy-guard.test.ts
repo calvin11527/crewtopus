@@ -156,8 +156,36 @@ describe('Privacy Guard', () => {
       ['src/app.ts', 'credentials.json', '.ssh/id_rsa'],
       basePath
     );
-    expect(safe).toEqual(['src/app.ts']);
-    expect(blocked).toEqual(expect.arrayContaining(['credentials.json', '.ssh/id_rsa']));
+    const posix = (p: string) => p.replace(/\\/g, '/');
+    expect(safe.map(posix)).toEqual(['src/app.ts']);
+    expect(blocked.map(posix)).toEqual(expect.arrayContaining(['credentials.json', '.ssh/id_rsa']));
     expect(blocked).toHaveLength(2);
+  });
+
+  it('should allow committed env templates while still blocking live .env files', () => {
+    const { safe, blocked } = sanitizePaths(
+      ['.env.example', '.env.sample', '.env.template', '.env', '.env.local', 'src/index.ts'],
+      '/tmp/agenthub-project'
+    );
+    const posix = (p: string) => p.replace(/\\/g, '/');
+    expect(safe.map(posix)).toEqual(
+      expect.arrayContaining(['.env.example', '.env.sample', '.env.template', 'src/index.ts'])
+    );
+    expect(blocked.map(posix)).toEqual(expect.arrayContaining(['.env', '.env.local']));
+    expect(blocked.map(posix)).not.toEqual(expect.arrayContaining(['.env.example']));
+
+    const templateScope = makeScope({
+      files: ['// .env.example\nPORT=3000\n# API_KEY=your_key_here\n'],
+    });
+    const allowed = runPrivacyGuard(templateScope, 'grok', ['.env.example']);
+    expect(allowed.passed).toBe(true);
+    expect(allowed.blockedReasons.some((r) => r.includes('.env.example'))).toBe(false);
+
+    const liveScope = makeScope({
+      files: ['// .env\nSECRET_TOKEN=abcd1234efgh5678\n'],
+    });
+    const blockedLive = runPrivacyGuard(liveScope, 'grok', ['.env']);
+    expect(blockedLive.passed).toBe(false);
+    expect(blockedLive.blockedReasons.some((r) => r.includes('.env'))).toBe(true);
   });
 });
