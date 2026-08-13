@@ -85,6 +85,21 @@ describe('ContextScope', () => {
     expect(level).toBeGreaterThanOrEqual(2);
   });
 
+  it('should not treat .env.example as a sensitive path', () => {
+    const examplePath = path.join(tmpDir, '.env.example');
+    fs.writeFileSync(examplePath, 'PORT=3000\n# API_KEY=your_key_here\n');
+
+    expect(classifySensitivity(['.env.example'], tmpDir)).toBe(0);
+
+    const scope = buildContextScope({
+      filePaths: ['.env.example'],
+      basePath: tmpDir,
+      includeDiffs: false,
+    });
+    expect(scope.files).toHaveLength(1);
+    expect(scope.files[0]).toContain('.env.example');
+  });
+
   it('should classify sensitivity from detected secrets in content', () => {
     const secretPath = path.join(tmpDir, 'config.ts');
     fs.writeFileSync(secretPath, 'const apiKey = "sk-abcdefghijklmnopqrstuvwxyz123456"');

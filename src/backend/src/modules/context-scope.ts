@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import type { ContextScope } from '../types';
 import { estimateTokens } from '../adapters/base';
 import { scanForSecrets } from './privacy-guard';
-import { isExcludedContextPath } from './context-path-filters';
+import { isEnvTemplatePath, isExcludedContextPath } from './context-path-filters';
 import { resolveWithinRoot, isPathInside, sanitizeForLog } from '../utils/safe-path';
 
 /** Priority tier for context file inclusion (lower = higher priority). */
@@ -316,9 +316,11 @@ export function classifySensitivity(filePaths: string[], basePath?: string): num
     const resolved = path.isAbsolute(filePath) ? filePath : path.join(base, filePath);
     const rel = path.relative(base, resolved);
 
-    for (const pattern of sensitivePatterns) {
-      if (pattern.test(rel)) {
-        level = Math.max(level, 2);
+    if (!isEnvTemplatePath(rel)) {
+      for (const pattern of sensitivePatterns) {
+        if (pattern.test(rel)) {
+          level = Math.max(level, 2);
+        }
       }
     }
 
