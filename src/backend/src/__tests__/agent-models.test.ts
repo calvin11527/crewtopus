@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { listAgents, updateAgentConfig } from '../modules/agent-registry';
 import {
+  DEFAULT_GROK_MODEL,
   listModelsForAgentType,
   listRecommendedLocalModels,
   resolveModelForAgent,
@@ -32,29 +33,28 @@ describe('agent-models', () => {
       path.join(grokHome, 'models_cache.json'),
       JSON.stringify({
         models: {
+          'grok-4.5': { info: { id: 'grok-4.5', name: 'Grok 4.5', description: 'Frontier model' } },
           'grok-build': { info: { id: 'grok-build', name: 'Grok Build', description: 'Build model' } },
-          'grok-composer-2.5-fast': {
-            info: { id: 'grok-composer-2.5-fast', name: 'Composer 2.5 Fast', description: 'Fast coder' },
-          },
         },
       })
     );
 
     const models = await listModelsForAgentType('grok');
-    expect(models.map((m) => m.id)).toEqual(expect.arrayContaining(['grok-build', 'grok-composer-2.5-fast']));
+    expect(models.map((m) => m.id)).toEqual(expect.arrayContaining(['grok-4.5', 'grok-build']));
+    expect(models.find((m) => m.id === DEFAULT_GROK_MODEL)?.isDefault).toBe(true);
   });
 
   it('resolves per-agent model from config', () => {
     const grok = listAgents().find((a) => a.type === 'grok');
     expect(grok).toBeDefined();
-    updateAgentConfig(grok!.id, { model: 'grok-build' });
+    updateAgentConfig(grok!.id, { model: 'grok-4.5' });
 
-    expect(resolveModelForAgent(grok!.id, 'grok')).toBe('grok-build');
-    expect(resolveModelForAgent(undefined, 'grok')).toBe('grok-composer-2.5-fast');
+    expect(resolveModelForAgent(grok!.id, 'grok')).toBe('grok-4.5');
+    expect(resolveModelForAgent(undefined, 'grok')).toBe(DEFAULT_GROK_MODEL);
   });
 
   it('validates model config values', () => {
-    expect(validateAgentModel('grok', 'grok-build')).toBeNull();
+    expect(validateAgentModel('grok', DEFAULT_GROK_MODEL)).toBeNull();
     expect(validateAgentModel('grok', '')).toBeNull();
     expect(validateAgentModel('grok', 42)).toBe('model must be a non-empty string');
   });

@@ -84,4 +84,62 @@ describe('loop-retry', () => {
       shouldAutoChainFixLoop({ retryMode: 'full' }, 'escalated', 'changes_requested')
     ).toBe(false);
   });
+
+  it('auto-chains when reviewer APPROVED but harness evals still block', () => {
+    expect(
+      shouldAutoChainFixLoop(
+        { retryMode: 'review_only', autoChainFix: true },
+        'escalated',
+        'approved',
+        { evalsPassed: false }
+      )
+    ).toBe(true);
+    expect(
+      shouldAutoChainFixLoop(
+        { retryMode: 'review_only', autoChainFix: true },
+        'idle',
+        'approved',
+        { evalsPassed: false }
+      )
+    ).toBe(true);
+    expect(
+      shouldAutoChainFixLoop(
+        { retryMode: 'review_only', autoChainFix: true },
+        'approved',
+        'approved',
+        { evalsPassed: true }
+      )
+    ).toBe(false);
+  });
+
+  it('includes harness eval failures in escalation context', () => {
+    const item = createWorkItem({ type: 'task', title: 'Eval context' });
+    logWorkItemActivity({
+      workItemId: item.id,
+      activityType: 'agent_completed',
+      summary: 'Review',
+      metadata: { pipelinePhase: 'review', content: 'APPROVED\nLooks good' },
+    });
+    logWorkItemActivity({
+      workItemId: item.id,
+      activityType: 'comment',
+      summary: 'Evals blocked',
+      metadata: {
+        event: 'loop_eval_blocked',
+        evalResults: [
+          {
+            evalId: 'acceptance',
+            type: 'acceptance_criteria',
+            passed: false,
+            details: 'Criterion not met: MarketTrendDesk',
+          },
+        ],
+      },
+    });
+
+    const context = getEscalationRetryContext(item.id);
+    expect(context?.reviewFeedback).toContain('APPROVED');
+    expect(context?.reviewFeedback).toContain('Harness eval failures');
+    expect(context?.reviewFeedback).toContain('MarketTrendDesk');
+  });
 });

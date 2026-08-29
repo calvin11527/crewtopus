@@ -53,3 +53,11 @@ Thumbs.db
 .turbo/
 .cache/
 .vite/
+
+# Local recovery artifacts / DB scratch
+recovery/backups/
+recovery/*.db
+recovery/*.db-shm
+recovery/*.db-wal
+*.db-shm
+*.db-wal

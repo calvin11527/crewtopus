@@ -307,6 +307,64 @@ describe('Loop Engine (AH-39)', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  it('escalates when reviewer APPROVED but eval_pass acceptance still fails (no idle dead-end)', async () => {
+    jest.spyOn(getAdapter('mock'), 'execute').mockImplementation(async (input: AdapterInput): Promise<AdapterOutput> => {
+      const capability = (input.config?.capability as string) || '';
+      if (capability === 'review') {
+        return {
+          content: 'APPROVED\nLooks complete to me.',
+          tokenCount: 20,
+          metadata: { adapter: 'mock', capability },
+        };
+      }
+      return { content: '## Implementation\npartial work', tokenCount: 20, metadata: { adapter: 'mock', capability } };
+    });
+
+    const item = createWorkItem({
+      type: 'task',
+      title: 'Eval blocked after approve',
+      assignedAgentType: 'mock',
+      status: 'todo',
+      // Unmatchable prose so static AC eval fails even with files present.
+      acceptanceCriteria: ['UnobtainiumQuantumFluxDrive must be fully calibrated in warp-core-manifest.xyz'],
+    });
+
+    const definition: WorkflowDefinition = {
+      name: 'Eval blocked',
+      steps: [],
+      loops: [
+        {
+          id: 'eval-blocked',
+          until: 'eval_pass',
+          maxIterations: 1,
+          onExhausted: 'escalate',
+          steps: [
+            { name: 'implement', agent: 'mock', capability: 'implementation' },
+            { name: 'review', agent: 'mock', capability: 'review' },
+          ],
+          evals: [
+            { id: 'verdict', type: 'verdict_parse', config: { required: 'approved' } },
+            { id: 'acceptance', type: 'acceptance_criteria' },
+          ],
+        },
+      ],
+    };
+
+    const workflow = createWorkflow('Eval blocked loop', definition);
+    const result = await runAgentLoop({
+      loop: definition.loops![0],
+      workflowId: workflow.id,
+      workItemId: item.id,
+      options: { maxIterations: 1, autoLoop: false },
+    });
+
+    expect(result.reviewVerdict).toBe('approved');
+    expect(result.loopStatus).toBe('escalated');
+    expect(result.evalResults?.some((e) => e.evalId === 'acceptance' && !e.passed)).toBe(true);
+    expect(getWorkItem(item.id)?.status).toBe('in_review');
+    expect(getWorkItem(item.id)?.loopStatus).toBe('escalated');
+  });
+
   it('should honour loop cancel signal before iteration starts', async () => {
     const item = createWorkItem({ type: 'task', title: 'Cancel test', assignedAgentType: 'mock', status: 'todo' });
     requestLoopCancel(item.id);

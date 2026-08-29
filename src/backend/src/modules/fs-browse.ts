@@ -186,3 +186,167 @@ export function validateProjectDirectory(inputPath: string): FsValidateResult {
     isGitRepo: hasGitRepo(resolved),
   };
 }
+
+const CORPUS_SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.grok',
+  '.kiro',
+  'dist',
+  'build',
+  'coverage',
+  '.venv',
+  'venv',
+  '__pycache__',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.next',
+  '.turbo',
+  'target',
+  'vendor',
+]);
+
+const CORPUS_TEXT_EXTENSIONS = new Set([
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.py',
+  '.md',
+  '.json',
+  '.yml',
+  '.yaml',
+  '.toml',
+  '.css',
+  '.html',
+  '.txt',
+  '.sh',
+  '.sql',
+  '.rs',
+  '.go',
+  '.java',
+  '.rb',
+  '.php',
+  '.swift',
+  '.kt',
+  '.cs',
+]);
+
+const MAX_CORPUS_FILES = 500;
+const MAX_CORPUS_DEPTH = 8;
+const MAX_CORPUS_FILE_BYTES = 80_000;
+const MAX_CORPUS_TOTAL_BYTES = 2_500_000;
+
+export interface WorkDirCorpus {
+  /** Relative paths (posix-style) found under workDir. */
+  files: string[];
+  /** Concatenated path names + readable file contents. */
+  text: string;
+}
+
+function isSafeCorpusSegment(name: string): boolean {
+  return (
+    Boolean(name) &&
+    name !== '.' &&
+    name !== '..' &&
+    !name.includes('\0') &&
+    !name.includes('/') &&
+    !name.includes('\\')
+  );
+}
+
+/**
+ * Recursively collect relative file paths and a bounded text corpus.
+ * Paths are always resolved from a trusted root (homedir / tmpdir / cwd),
+ * then checked with startsWith(root + sep) at the filesystem sink.
+ */
+export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
+  if (!workDir) return { files: [], text: '' };
+
+  const homeRoot = path.resolve(os.homedir());
+  const tmpRoot = path.resolve(os.tmpdir());
+  const cwdRoot = path.resolve(process.cwd());
+  const homePrefix = homeRoot + path.sep;
+  const tmpPrefix = tmpRoot + path.sep;
+  const cwdPrefix = cwdRoot + path.sep;
+
+  const requested = path.resolve(workDir);
+  let trustedRoot: string | undefined;
+  if (requested === homeRoot || requested.startsWith(homePrefix)) trustedRoot = homeRoot;
+  else if (requested === tmpRoot || requested.startsWith(tmpPrefix)) trustedRoot = tmpRoot;
+  else if (requested === cwdRoot || requested.startsWith(cwdPrefix)) trustedRoot = cwdRoot;
+  if (!trustedRoot) return { files: [], text: '' };
+
+  const fromTrusted = path.relative(trustedRoot, requested);
+  const baseSegments = fromTrusted.split(path.sep).filter(Boolean);
+  if (baseSegments.some((seg) => !isSafeCorpusSegment(seg))) return { files: [], text: '' };
+
+  const trustedPrefix = trustedRoot + path.sep;
+  const files: string[] = [];
+  const chunks: string[] = [];
+  let totalBytes = 0;
+  const queue: Array<{ rel: string; depth: number }> = [{ rel: '', depth: 0 }];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (files.length >= MAX_CORPUS_FILES || current.depth > MAX_CORPUS_DEPTH || totalBytes >= MAX_CORPUS_TOTAL_BYTES) {
+      continue;
+    }
+
+    const childSegments = current.rel.split('/').filter(Boolean);
+    if (!childSegments.every(isSafeCorpusSegment)) continue;
+
+    const absDir = path.resolve(trustedRoot, ...baseSegments, ...childSegments);
+    if (!absDir.startsWith(trustedPrefix) && absDir !== trustedRoot) continue;
+
+    let entries: fs.Dirent[];
+    if (absDir.startsWith(trustedPrefix) || absDir === trustedRoot) {
+      try {
+        entries = fs.readdirSync(absDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+    } else {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (files.length >= MAX_CORPUS_FILES || totalBytes >= MAX_CORPUS_TOTAL_BYTES) break;
+      const name = entry.name;
+      if (!isSafeCorpusSegment(name) || name.startsWith('._')) continue;
+      if (entry.isDirectory()) {
+        if (CORPUS_SKIP_DIRS.has(name) || name.startsWith('.')) continue;
+        queue.push({ rel: current.rel ? `${current.rel}/${name}` : name, depth: current.depth + 1 });
+        continue;
+      }
+      if (!entry.isFile()) continue;
+
+      const rel = current.rel ? `${current.rel}/${name}` : name;
+      files.push(rel);
+
+      const ext = path.extname(name).toLowerCase();
+      if (!CORPUS_TEXT_EXTENSIONS.has(ext)) continue;
+
+      const relSegments = rel.split('/').filter(Boolean);
+      if (!relSegments.every(isSafeCorpusSegment)) continue;
+
+      const full = path.resolve(trustedRoot, ...baseSegments, ...relSegments);
+      if (full.startsWith(trustedPrefix)) {
+        try {
+          const content = fs.readFileSync(full, 'utf-8');
+          if (content.length <= 0 || content.length > MAX_CORPUS_FILE_BYTES) continue;
+          if (totalBytes + content.length > MAX_CORPUS_TOTAL_BYTES) continue;
+          totalBytes += content.length;
+          chunks.push(`\n// file: ${rel}\n${content}`);
+        } catch {
+          /* skip unreadable */
+        }
+      }
+    }
+  }
+
+  const pathIndex = files.join('\n');
+  return { files, text: `${pathIndex}\n${chunks.join('\n')}` };
+}

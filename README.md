@@ -77,6 +77,13 @@ cd crewtopus
 ./quickstart.sh        # install + dev + open browser + mock demo
 ```
 
+**Daily start on macOS** — double-click **`Crewtopus.app`** in Finder (logo icon).  
+That opens Terminal, starts API + UI, and opens the browser when ready.
+
+```bash
+./start.sh             # same thing from a terminal (backend :3000 + frontend :5173)
+```
+
 Or step-by-step:
 
 ```bash

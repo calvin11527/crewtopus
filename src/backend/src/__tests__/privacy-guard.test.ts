@@ -83,6 +83,9 @@ describe('Privacy Guard', () => {
   it('should ignore documentation placeholders like KEY=your_key_here', () => {
     expect(isPlaceholderSecret('KEY=your_key_here')).toBe(true);
     expect(isPlaceholderSecret('API_KEY=<paste_here>')).toBe(true);
+    expect(isPlaceholderSecret('KEY=ollama')).toBe(true);
+    expect(isPlaceholderSecret("KEY=ollama{'\\n'}")).toBe(true);
+    expect(isPlaceholderSecret("KEY = os.environ.get('LLM_API_KEY', '')")).toBe(true);
     expect(isPlaceholderSecret('sk-abcdefghijklmnopqrstuvwxyz123456')).toBe(false);
 
     const matches = scanForSecrets(
@@ -100,6 +103,26 @@ describe('Privacy Guard', () => {
     expect(result.matches).toHaveLength(0);
   });
 
+  it('should not flag setup docs or env lookups as secrets (sensitivity false positives)', () => {
+    const content = [
+      "// NewsPanel.tsx",
+      "LLM_API_KEY=your-openai-key{'\\n'}",
+      "LLM_API_KEY=ollama{'\\n'}",
+      "LLM_API_KEY = os.environ.get('LLM_API_KEY', '')",
+      "const KEY = 'opsbar.evidenceExpanded';",
+    ].join('\n');
+
+    expect(scanForSecrets(content, 'NewsPanel.tsx')).toHaveLength(0);
+
+    const scope = makeScope({
+      files: [content],
+      sensitivityLevel: 0,
+    });
+    const result = runPrivacyGuard(scope, 'grok', ['dashboard/src/components/NewsPanel.tsx']);
+    expect(result.passed).toBe(true);
+    expect(result.matches).toHaveLength(0);
+  });
+
   it('should not block process.env references in source files', () => {
     const scope = makeScope({
       files: ['// src/index.ts\nconst port = process.env.PORT || 3000;'],
@@ -108,6 +131,15 @@ describe('Privacy Guard', () => {
     const result = runPrivacyGuard(scope, 'mock', ['src/index.ts']);
     expect(result.passed).toBe(true);
     expect(result.blockedReasons.some((r) => r.includes('blocked path pattern ".env"'))).toBe(false);
+  });
+
+  it('should allow mock agent for high-sensitivity (local-only) policy', () => {
+    const scope = makeScope({
+      files: ['internal design notes'],
+      sensitivityLevel: 3,
+    });
+    expect(runPrivacyGuard(scope, 'mock').passed).toBe(true);
+    expect(runPrivacyGuard(scope, 'ollama').passed).toBe(true);
   });
 
   it('should block actual .env files in context by path', () => {

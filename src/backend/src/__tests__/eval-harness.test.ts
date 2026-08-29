@@ -7,6 +7,8 @@ import {
   runLoopEvals,
   allEvalsPassed,
   parseReviewVerdict,
+  extractCriterionEvidenceTokens,
+  buildWorkDirCorpus,
 } from '../modules/eval-harness';
 
 describe('Eval Harness (M5)', () => {
@@ -50,6 +52,52 @@ describe('Eval Harness (M5)', () => {
     expect(allEvalsPassed(results)).toBe(true);
 
     fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('should match product ACs via nested code identifiers, not full prose', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-nested-'));
+    fs.mkdirSync(path.join(tmp, 'dashboard', 'src', 'components'), { recursive: true });
+    fs.mkdirSync(path.join(tmp, 'src', 'analysis'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, 'dashboard', 'src', 'components', 'MarketTrendDesk.tsx'),
+      'export function MarketTrendDesk() { return <div>regime screener drill-down VIX</div>; }\n'
+    );
+    fs.writeFileSync(
+      path.join(tmp, 'src', 'analysis', 'market_trend_desk.py'),
+      'def build_market_trend_desk():\n  return {"sample_size": 1, "ledger_status": "ok", "baseline": "x", "market_trend_brief": True}\n'
+    );
+    fs.writeFileSync(path.join(tmp, 'quick_validation.py'), 'print("ok")\n');
+
+    const item = createWorkItem({
+      type: 'task',
+      title: 'Market desk',
+      assignedAgentType: 'mock',
+      acceptanceCriteria: [
+        'Dashboard: new MarketTrendDesk view shows regime, ≥ 5 candidate symbols, drill-down available',
+        'MCP endpoint or tool: `market_trend_brief` returns regime + screened symbols + top forecasts',
+        'All forecast labels (sample_size, ledger_status, baseline) visible on desk',
+        'Load time: regime + screen + top 5 names in < 3 seconds (cold start)',
+        'quick_validation.py still passes',
+      ],
+    });
+
+    const result = runEval(
+      { id: 'a', type: 'acceptance_criteria' },
+      { workItem: item, workDir: tmp, reviewVerdict: 'approved' }
+    );
+
+    expect(result.passed).toBe(true);
+    const corpus = buildWorkDirCorpus(tmp);
+    expect(corpus.files.some((f) => f.includes('MarketTrendDesk'))).toBe(true);
+
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('extracts evidence tokens from free-form criteria', () => {
+    const tokens = extractCriterionEvidenceTokens(
+      'MCP endpoint or tool: `market_trend_brief` returns regime + MarketTrendDesk'
+    );
+    expect(tokens).toEqual(expect.arrayContaining(['market_trend_brief', 'markettrenddesk', 'regime']));
   });
 
   it('should skip test_command when useRepoRoot and no workspace is linked', () => {

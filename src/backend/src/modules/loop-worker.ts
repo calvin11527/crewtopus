@@ -14,7 +14,12 @@ import {
   ensureGrokCopilotWorkflow,
   type PipelineResult,
 } from './work-item-pipeline';
-import { enqueueLoopRetry, shouldAutoChainFixLoop, type LoopRetryPayload } from './loop-retry';
+import {
+  enqueueLoopRetry,
+  evalsIndicateBlock,
+  shouldAutoChainFixLoop,
+  type LoopRetryPayload,
+} from './loop-retry';
 import {
   checkParentStoryRollup,
   runStoryBaPhase,
@@ -139,11 +144,16 @@ async function processJob(job: LoopJob): Promise<void> {
       jobId: job.id,
     });
 
-    if (shouldAutoChainFixLoop(payload, result.loopStatus, result.reviewVerdict)) {
+    const evalsBlocked = evalsIndicateBlock(result.evalResults);
+    if (shouldAutoChainFixLoop(payload, result.loopStatus, result.reviewVerdict, { evalsPassed: !evalsBlocked })) {
+      const reason =
+        result.reviewVerdict === 'approved' && evalsBlocked
+          ? 'Reviewer APPROVED but harness evals still block — developer fix loop auto-queued'
+          : 'Review requested changes — developer fix loop auto-queued after harness pass';
       enqueueLoopRetry(job.workItemId!, workflowId, {
         retryMode: 'escalation_continue',
         orchestrator: 'review_retry_chain',
-        summary: 'Review requested changes — developer fix loop auto-queued after harness pass',
+        summary: reason,
       });
     }
 

@@ -1,0 +1,23 @@
+#!/bin/bash
+# Double-click launcher for Crewtopus (backend + frontend).
+set -euo pipefail
+
+# .../Crewtopus.app/Contents/MacOS/Crewtopus → repo root
+ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+
+if [[ ! -x "$ROOT/start.sh" ]]; then
+  osascript -e "display alert \"Crewtopus\" message \"start.sh not found or not executable at:\n$ROOT/start.sh\" as critical"
+  exit 1
+fi
+
+# Open Terminal so logs are visible; Ctrl+C stops both services.
+# OPEN_BROWSER=1 opens the UI once the API is healthy.
+ROOT_Q=$(printf '%q' "$ROOT")
+osascript <<EOF
+tell application "Terminal"
+  activate
+  do script "cd ${ROOT_Q} && clear && echo '🐙 Crewtopus — starting API + UI…' && echo '' && OPEN_BROWSER=1 ./start.sh"
+end tell
+EOF
+
+exit 0
