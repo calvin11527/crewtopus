@@ -259,8 +259,8 @@ function isSafeCorpusSegment(name: string): boolean {
 
 /**
  * Recursively collect relative file paths and a bounded text corpus.
- * Every filesystem access is gated by startsWith against trusted local roots
- * (home, temp, cwd) so CodeQL can see the containment barrier at the sink.
+ * Paths are always resolved from a trusted root (homedir / tmpdir / cwd),
+ * then checked with startsWith(root + sep) at the filesystem sink.
  */
 export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
   if (!workDir) return { files: [], text: '' };
@@ -268,22 +268,22 @@ export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
   const homeRoot = path.resolve(os.homedir());
   const tmpRoot = path.resolve(os.tmpdir());
   const cwdRoot = path.resolve(process.cwd());
-  const homePrefix = homeRoot.endsWith(path.sep) ? homeRoot : homeRoot + path.sep;
-  const tmpPrefix = tmpRoot.endsWith(path.sep) ? tmpRoot : tmpRoot + path.sep;
-  const cwdPrefix = cwdRoot.endsWith(path.sep) ? cwdRoot : cwdRoot + path.sep;
+  const homePrefix = homeRoot + path.sep;
+  const tmpPrefix = tmpRoot + path.sep;
+  const cwdPrefix = cwdRoot + path.sep;
 
   const requested = path.resolve(workDir);
-  if (
-    requested !== homeRoot &&
-    !requested.startsWith(homePrefix) &&
-    requested !== tmpRoot &&
-    !requested.startsWith(tmpPrefix) &&
-    requested !== cwdRoot &&
-    !requested.startsWith(cwdPrefix)
-  ) {
-    return { files: [], text: '' };
-  }
+  let trustedRoot: string | undefined;
+  if (requested === homeRoot || requested.startsWith(homePrefix)) trustedRoot = homeRoot;
+  else if (requested === tmpRoot || requested.startsWith(tmpPrefix)) trustedRoot = tmpRoot;
+  else if (requested === cwdRoot || requested.startsWith(cwdPrefix)) trustedRoot = cwdRoot;
+  if (!trustedRoot) return { files: [], text: '' };
 
+  const fromTrusted = path.relative(trustedRoot, requested);
+  const baseSegments = fromTrusted.split(path.sep).filter(Boolean);
+  if (baseSegments.some((seg) => !isSafeCorpusSegment(seg))) return { files: [], text: '' };
+
+  const trustedPrefix = trustedRoot + path.sep;
   const files: string[] = [];
   const chunks: string[] = [];
   let totalBytes = 0;
@@ -295,25 +295,14 @@ export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
       continue;
     }
 
-    const segments = current.rel.split('/').filter(Boolean);
-    if (!segments.every(isSafeCorpusSegment)) continue;
+    const childSegments = current.rel.split('/').filter(Boolean);
+    if (!childSegments.every(isSafeCorpusSegment)) continue;
 
-    let absDir: string;
-    try {
-      absDir = segments.length === 0 ? requested : resolveWithinRoot(requested, ...segments);
-    } catch {
-      continue;
-    }
+    const absDir = path.resolve(trustedRoot, ...baseSegments, ...childSegments);
+    if (!absDir.startsWith(trustedPrefix) && absDir !== trustedRoot) continue;
 
     let entries: fs.Dirent[];
-    if (
-      absDir === homeRoot ||
-      absDir.startsWith(homePrefix) ||
-      absDir === tmpRoot ||
-      absDir.startsWith(tmpPrefix) ||
-      absDir === cwdRoot ||
-      absDir.startsWith(cwdPrefix)
-    ) {
+    if (absDir.startsWith(trustedPrefix) || absDir === trustedRoot) {
       try {
         entries = fs.readdirSync(absDir, { withFileTypes: true });
       } catch {
@@ -343,21 +332,8 @@ export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
       const relSegments = rel.split('/').filter(Boolean);
       if (!relSegments.every(isSafeCorpusSegment)) continue;
 
-      let full: string;
-      try {
-        full = resolveWithinRoot(requested, ...relSegments);
-      } catch {
-        continue;
-      }
-
-      if (
-        full === homeRoot ||
-        full.startsWith(homePrefix) ||
-        full === tmpRoot ||
-        full.startsWith(tmpPrefix) ||
-        full === cwdRoot ||
-        full.startsWith(cwdPrefix)
-      ) {
+      const full = path.resolve(trustedRoot, ...baseSegments, ...relSegments);
+      if (full.startsWith(trustedPrefix)) {
         try {
           const content = fs.readFileSync(full, 'utf-8');
           if (content.length <= 0 || content.length > MAX_CORPUS_FILE_BYTES) continue;
