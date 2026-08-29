@@ -211,18 +211,52 @@ export interface WorkDirCorpus {
   text: string;
 }
 
+function isSafePathSegment(name: string): boolean {
+  return (
+    Boolean(name) &&
+    name !== '.' &&
+    name !== '..' &&
+    !name.includes('\0') &&
+    !name.includes('/') &&
+    !name.includes('\\')
+  );
+}
+
+function resolveRelUnderRoot(root: string, relDir: string): string | null {
+  if (!relDir) return root;
+  const segments = relDir.split('/').filter(Boolean);
+  if (segments.length === 0) return root;
+  if (!segments.every(isSafePathSegment)) return null;
+  try {
+    return resolveWithinRoot(root, ...segments);
+  } catch {
+    return null;
+  }
+}
+
 /** Recursively collect relative file paths and a bounded text corpus for evals. */
 export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
-  if (!workDir || !fs.existsSync(workDir)) return { files: [], text: '' };
+  if (!workDir) return { files: [], text: '' };
+
+  // Resolve once; validate by opening the directory (no existsSync TOCTOU).
+  const root = path.resolve(workDir);
+  try {
+    fs.readdirSync(root);
+  } catch {
+    return { files: [], text: '' };
+  }
 
   const files: string[] = [];
   const chunks: string[] = [];
   let totalBytes = 0;
 
-  const walk = (absDir: string, relDir: string, depth: number) => {
+  const walk = (relDir: string, depth: number) => {
     if (files.length >= MAX_EVAL_FILES || depth > MAX_EVAL_DEPTH || totalBytes >= MAX_EVAL_TOTAL_BYTES) {
       return;
     }
+
+    const absDir = resolveRelUnderRoot(root, relDir);
+    if (!absDir) return;
 
     let entries: fs.Dirent[];
     try {
@@ -234,10 +268,10 @@ export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
     for (const entry of entries) {
       if (files.length >= MAX_EVAL_FILES || totalBytes >= MAX_EVAL_TOTAL_BYTES) break;
       const name = entry.name;
-      if (name.startsWith('._') || name === '.' || name === '..') continue;
+      if (!isSafePathSegment(name) || name.startsWith('._')) continue;
       if (entry.isDirectory()) {
         if (EVAL_SKIP_DIRS.has(name) || name.startsWith('.')) continue;
-        walk(path.join(absDir, name), relDir ? `${relDir}/${name}` : name, depth + 1);
+        walk(relDir ? `${relDir}/${name}` : name, depth + 1);
         continue;
       }
       if (!entry.isFile()) continue;
@@ -246,16 +280,16 @@ export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
       files.push(rel);
 
       const ext = path.extname(name).toLowerCase();
-      if (!EVAL_TEXT_EXTENSIONS.has(ext) && !name.endsWith('.py') && !name.endsWith('.md')) {
-        continue;
-      }
+      if (!EVAL_TEXT_EXTENSIONS.has(ext)) continue;
 
+      const full = resolveRelUnderRoot(root, rel);
+      if (!full) continue;
+
+      // Single read — no exists/stat race; size gated after read.
       try {
-        const full = resolveWithinRoot(workDir, rel);
-        const st = fs.statSync(full);
-        if (st.size <= 0 || st.size > MAX_EVAL_FILE_BYTES) continue;
-        if (totalBytes + st.size > MAX_EVAL_TOTAL_BYTES) continue;
         const content = fs.readFileSync(full, 'utf-8');
+        if (content.length <= 0 || content.length > MAX_EVAL_FILE_BYTES) continue;
+        if (totalBytes + content.length > MAX_EVAL_TOTAL_BYTES) continue;
         totalBytes += content.length;
         chunks.push(`\n// file: ${rel}\n${content}`);
       } catch {
@@ -264,10 +298,10 @@ export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
     }
   };
 
-  walk(workDir, '', 0);
+  walk('', 0);
 
   // Always include shallow top-level names (legacy callers / small workdirs)
-  for (const name of listFilesInDir(workDir)) {
+  for (const name of listFilesInDir(root)) {
     if (!files.includes(name)) files.push(name);
   }
 
@@ -300,22 +334,28 @@ export function extractCriterionEvidenceGroups(criterion: string): CriterionEvid
     strong.add(m[1].trim().toLowerCase());
   }
 
-  for (const m of criterion.matchAll(/\b[\w./-]+\.[a-z][a-z0-9]{0,5}\b/gi)) {
+  // File-like tokens (bounded extension) — avoid nested quantifiers for ReDoS safety.
+  for (const m of criterion.matchAll(/\b[\w./-]{1,80}\.[a-z][a-z0-9]{0,5}\b/gi)) {
     strong.add(m[0].toLowerCase());
   }
 
-  for (const m of criterion.matchAll(/\b[A-Z][a-z0-9]+(?:[A-Z][a-zA-Z0-9]+)+\b/g)) {
-    strong.add(m[0].toLowerCase());
+  // PascalCase / camel identifiers without nested possessive quantifiers (CodeQL ReDoS).
+  for (const word of criterion.split(/[^A-Za-z0-9]+/)) {
+    if (word.length < 3 || word.length > 64) continue;
+    if (word[0] < 'A' || word[0] > 'Z') continue;
+    if (!/[a-z]/.test(word) || !/[a-z][A-Z]/.test(word)) continue;
+    if (!/^[A-Za-z0-9]+$/.test(word)) continue;
+    strong.add(word.toLowerCase());
   }
 
-  for (const m of criterion.matchAll(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g)) {
+  for (const m of criterion.matchAll(/\b[a-z][a-z0-9]{0,40}(?:_[a-z0-9]{1,40}){1,8}\b/g)) {
     strong.add(m[0].toLowerCase());
   }
 
   // Significant words (skip pure stopwords / tiny tokens)
   for (const raw of criterion.toLowerCase().split(/[^a-z0-9_./-]+/)) {
     const w = raw.trim();
-    if (w.length < 4) continue;
+    if (w.length < 4 || w.length > 64) continue;
     if (AC_STOPWORDS.has(w)) continue;
     if (/^\d+$/.test(w)) continue;
     if (strong.has(w)) continue;
