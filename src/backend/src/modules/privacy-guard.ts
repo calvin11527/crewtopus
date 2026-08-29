@@ -56,7 +56,7 @@ function isDemoSecret(value: string): boolean {
 
 /**
  * Documentation / template placeholders that look like env assignments but are not real secrets
- * (e.g. README `KEY=your_key_here`, `API_KEY=<paste>`).
+ * (e.g. README `KEY=your_key_here`, `API_KEY=<paste>`, JSX docs `LLM_API_KEY=ollama{'\n'}`).
  */
 export function isPlaceholderSecret(value: string): boolean {
   const raw = value.trim();
@@ -64,6 +64,13 @@ export function isPlaceholderSecret(value: string): boolean {
 
   const eq = raw.search(/[:=]/);
   let rhs = eq >= 0 ? raw.slice(eq + 1).trim() : raw;
+
+  // Strip accidental JSX / template tails from greedy `\S+` matches (e.g. ollama{'\n'})
+  const jsxTail = rhs.search(/\{['"`]/);
+  if (jsxTail > 0) {
+    rhs = rhs.slice(0, jsxTail).trim();
+  }
+
   while (
     (rhs.startsWith("'") && rhs.endsWith("'")) ||
     (rhs.startsWith('"') && rhs.endsWith('"')) ||
@@ -73,6 +80,15 @@ export function isPlaceholderSecret(value: string): boolean {
   }
 
   if (!rhs) return true;
+
+  // Source code that *reads* env vars is not a literal secret value
+  if (
+    /\b(os\.environ|process\.env|getenv|environ\.get|config\.get)\b/i.test(rhs) ||
+    /^[a-zA-Z_][\w.]*\s*\(/.test(rhs)
+  ) {
+    return true;
+  }
+
   // Too short / obvious fillers (avoid nested quantifiers for ReDoS safety)
   if (rhs.length < 8) return true;
   if (/^[xyz*.\-]+$/i.test(rhs)) return true;
@@ -99,6 +115,31 @@ export function isPlaceholderSecret(value: string): boolean {
   ];
   if (placeholderTokens.some((t) => lower.includes(t))) return true;
   if (lower.endsWith('_here') || lower.endsWith('-here')) return true;
+
+  // Benign short env values often shown in setup docs (not high-entropy secrets)
+  const benignExact = new Set([
+    'ollama',
+    'openai',
+    'anthropic',
+    'local',
+    'localhost',
+    'development',
+    'production',
+    'staging',
+    'test',
+    'debug',
+    'info',
+    'warning',
+    'error',
+    'gpt-4',
+    'gpt-4o',
+    'gpt-4o-mini',
+    'claude',
+    'grok',
+  ]);
+  if (benignExact.has(lower)) return true;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(rhs)) return true;
+
   // Bracketed fillers like <paste> or {KEY} without nested quantifiers
   if (
     (rhs.startsWith('<') && rhs.endsWith('>')) ||
@@ -127,7 +168,12 @@ const SECRET_PATTERNS: Array<{ type: SecretType; pattern: RegExp; label: string 
   { type: 'certificate', pattern: /-----BEGIN CERTIFICATE-----/g, label: 'Certificate' },
   { type: 'pii', pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, label: 'Email address' },
   { type: 'pii', pattern: /\b\d{3}-\d{2}-\d{4}\b/g, label: 'SSN pattern' },
-  { type: 'env_var', pattern: /(?:SECRET|TOKEN|KEY|PASSWORD|CREDENTIAL)[_A-Z]*\s*=\s*\S+/g, label: 'Sensitive env var' },
+  // Stop at quotes/braces so JSX docs like KEY=ollama{'\n'} do not swallow template tails
+  {
+    type: 'env_var',
+    pattern: /(?:SECRET|TOKEN|KEY|PASSWORD|CREDENTIAL)[_A-Z]*\s*=\s*[^\s'"`{]+/g,
+    label: 'Sensitive env var',
+  },
 ];
 
 const BLOCKED_PATH_PATTERNS = [
@@ -281,7 +327,12 @@ export function evaluatePolicies(
           }
           break;
         case 'require_local':
-          if (scope.sensitivityLevel >= (rule.value as number) && agentType !== 'ollama') {
+          // Local-only agents: Ollama stays on-box; mock never leaves the machine.
+          if (
+            scope.sensitivityLevel >= (rule.value as number) &&
+            agentType !== 'ollama' &&
+            agentType !== 'mock'
+          ) {
             violations.push(msg(`sensitivity ${scope.sensitivityLevel} requires local agent`));
           }
           break;

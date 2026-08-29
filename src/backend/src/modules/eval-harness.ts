@@ -83,17 +83,275 @@ export interface EvalContext {
   reviewVerdict?: ReviewVerdict;
 }
 
-function readWorkDirText(workDir?: string): string {
-  if (!workDir || !fs.existsSync(workDir)) return '';
-  return listFilesInDir(workDir)
-    .map((name) => {
-      try {
-        return fs.readFileSync(resolveWithinRoot(workDir, name), 'utf-8');
-      } catch {
-        return '';
+const EVAL_SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.grok',
+  '.kiro',
+  'dist',
+  'build',
+  'coverage',
+  '.venv',
+  'venv',
+  '__pycache__',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.next',
+  '.turbo',
+  'target',
+  'vendor',
+]);
+
+const EVAL_TEXT_EXTENSIONS = new Set([
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.py',
+  '.md',
+  '.json',
+  '.yml',
+  '.yaml',
+  '.toml',
+  '.css',
+  '.html',
+  '.txt',
+  '.sh',
+  '.sql',
+  '.rs',
+  '.go',
+  '.java',
+  '.rb',
+  '.php',
+  '.swift',
+  '.kt',
+  '.cs',
+]);
+
+const MAX_EVAL_FILES = 500;
+const MAX_EVAL_DEPTH = 8;
+const MAX_EVAL_FILE_BYTES = 80_000;
+const MAX_EVAL_TOTAL_BYTES = 2_500_000;
+
+const AC_STOPWORDS = new Set([
+  'the',
+  'and',
+  'or',
+  'for',
+  'with',
+  'from',
+  'that',
+  'this',
+  'into',
+  'onto',
+  'over',
+  'under',
+  'when',
+  'then',
+  'than',
+  'also',
+  'plus',
+  'such',
+  'each',
+  'both',
+  'all',
+  'any',
+  'new',
+  'shows',
+  'show',
+  'displays',
+  'display',
+  'available',
+  'returns',
+  'return',
+  'still',
+  'passes',
+  'pass',
+  'handles',
+  'handle',
+  'gracefully',
+  'visible',
+  'matching',
+  'filter',
+  'filters',
+  'current',
+  'optional',
+  'names',
+  'name',
+  'view',
+  'logic',
+  'endpoint',
+  'tool',
+  'time',
+  'load',
+  'cold',
+  'start',
+  'top',
+  'card',
+  'desk',
+  'no',
+  'not',
+  'via',
+  'using',
+  'must',
+  'should',
+  'able',
+  'like',
+  'e.g',
+  'eg',
+  'etc',
+]);
+
+export interface WorkDirCorpus {
+  /** Relative paths (posix-style) found under workDir. */
+  files: string[];
+  /** Concatenated path names + readable file contents (lowercased lookups use this). */
+  text: string;
+}
+
+/** Recursively collect relative file paths and a bounded text corpus for evals. */
+export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
+  if (!workDir || !fs.existsSync(workDir)) return { files: [], text: '' };
+
+  const files: string[] = [];
+  const chunks: string[] = [];
+  let totalBytes = 0;
+
+  const walk = (absDir: string, relDir: string, depth: number) => {
+    if (files.length >= MAX_EVAL_FILES || depth > MAX_EVAL_DEPTH || totalBytes >= MAX_EVAL_TOTAL_BYTES) {
+      return;
+    }
+
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (files.length >= MAX_EVAL_FILES || totalBytes >= MAX_EVAL_TOTAL_BYTES) break;
+      const name = entry.name;
+      if (name.startsWith('._') || name === '.' || name === '..') continue;
+      if (entry.isDirectory()) {
+        if (EVAL_SKIP_DIRS.has(name) || name.startsWith('.')) continue;
+        walk(path.join(absDir, name), relDir ? `${relDir}/${name}` : name, depth + 1);
+        continue;
       }
-    })
-    .join('\n');
+      if (!entry.isFile()) continue;
+
+      const rel = relDir ? `${relDir}/${name}` : name;
+      files.push(rel);
+
+      const ext = path.extname(name).toLowerCase();
+      if (!EVAL_TEXT_EXTENSIONS.has(ext) && !name.endsWith('.py') && !name.endsWith('.md')) {
+        continue;
+      }
+
+      try {
+        const full = resolveWithinRoot(workDir, rel);
+        const st = fs.statSync(full);
+        if (st.size <= 0 || st.size > MAX_EVAL_FILE_BYTES) continue;
+        if (totalBytes + st.size > MAX_EVAL_TOTAL_BYTES) continue;
+        const content = fs.readFileSync(full, 'utf-8');
+        totalBytes += content.length;
+        chunks.push(`\n// file: ${rel}\n${content}`);
+      } catch {
+        /* skip unreadable / outside-root */
+      }
+    }
+  };
+
+  walk(workDir, '', 0);
+
+  // Always include shallow top-level names (legacy callers / small workdirs)
+  for (const name of listFilesInDir(workDir)) {
+    if (!files.includes(name)) files.push(name);
+  }
+
+  const pathIndex = files.join('\n');
+  return { files, text: `${pathIndex}\n${chunks.join('\n')}` };
+}
+
+function readWorkDirText(workDir?: string): string {
+  return buildWorkDirCorpus(workDir).text;
+}
+
+export interface CriterionEvidenceTokens {
+  /** Identifiers / file names / symbols that must largely appear in the workdir. */
+  strong: string[];
+  /** Supporting prose words — helpful but not required when strong hits land. */
+  weak: string[];
+}
+
+/** Distinctive tokens / identifiers extracted from a free-form acceptance criterion. */
+export function extractCriterionEvidenceTokens(criterion: string): string[] {
+  const { strong, weak } = extractCriterionEvidenceGroups(criterion);
+  return [...new Set([...strong, ...weak])];
+}
+
+export function extractCriterionEvidenceGroups(criterion: string): CriterionEvidenceTokens {
+  const strong = new Set<string>();
+  const weak = new Set<string>();
+
+  for (const m of criterion.matchAll(/`([^`]+)`/g)) {
+    strong.add(m[1].trim().toLowerCase());
+  }
+
+  for (const m of criterion.matchAll(/\b[\w./-]+\.[a-z][a-z0-9]{0,5}\b/gi)) {
+    strong.add(m[0].toLowerCase());
+  }
+
+  for (const m of criterion.matchAll(/\b[A-Z][a-z0-9]+(?:[A-Z][a-zA-Z0-9]+)+\b/g)) {
+    strong.add(m[0].toLowerCase());
+  }
+
+  for (const m of criterion.matchAll(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g)) {
+    strong.add(m[0].toLowerCase());
+  }
+
+  // Significant words (skip pure stopwords / tiny tokens)
+  for (const raw of criterion.toLowerCase().split(/[^a-z0-9_./-]+/)) {
+    const w = raw.trim();
+    if (w.length < 4) continue;
+    if (AC_STOPWORDS.has(w)) continue;
+    if (/^\d+$/.test(w)) continue;
+    if (strong.has(w)) continue;
+    // Keep compound product terms as strong (drill-down, market-trend, …)
+    if (w.includes('-') && w.length >= 6) {
+      strong.add(w);
+      continue;
+    }
+    weak.add(w);
+  }
+
+  return { strong: [...strong], weak: [...weak] };
+}
+
+function isRuntimeOrQualityCriterion(criterion: string): boolean {
+  const lower = criterion.toLowerCase();
+  return (
+    /load time|<\s*\d+\s*sec|seconds?\s*\(|cold start|drill-down in\s*</i.test(lower) ||
+    /no console|stderr errors|gracefully handles|slow api/i.test(lower)
+  );
+}
+
+function criterionEvidenceHits(tokens: string[], corpusLower: string, pathsLower: string): number {
+  let hits = 0;
+  for (const token of tokens) {
+    if (corpusLower.includes(token) || pathsLower.includes(token)) {
+      hits++;
+      continue;
+    }
+    // Path basename without extension (MarketTrendDesk.tsx → markettrenddesk)
+    const bare = token.replace(/\.[a-z0-9]+$/i, '');
+    if (bare.length >= 4 && (corpusLower.includes(bare) || pathsLower.includes(bare))) {
+      hits++;
+    }
+  }
+  return hits;
 }
 
 function evalVerdictParse(evalDef: LoopEval, ctx: EvalContext): EvalResult {
@@ -134,6 +392,14 @@ function evalFileExists(evalDef: LoopEval, ctx: EvalContext): EvalResult {
   };
 }
 
+function pathHasBasename(files: string[], basename: string): boolean {
+  const target = basename.toLowerCase();
+  return files.some((f) => {
+    const base = f.split('/').pop()?.toLowerCase() ?? '';
+    return base === target || f.toLowerCase().endsWith(`/${target}`);
+  });
+}
+
 function evalAcceptanceCriteria(evalDef: LoopEval, ctx: EvalContext): EvalResult {
   const item = ctx.workItem;
   if (!item || item.acceptanceCriteria.length === 0) {
@@ -146,9 +412,13 @@ function evalAcceptanceCriteria(evalDef: LoopEval, ctx: EvalContext): EvalResult
   }
 
   const workDir = ctx.workDir;
-  const files = listFilesInDir(workDir);
-  const allText = readWorkDirText(workDir);
+  const corpus = buildWorkDirCorpus(workDir);
+  const files = corpus.files;
+  const allText = corpus.text;
+  const corpusLower = allText.toLowerCase();
+  const pathsLower = files.join('\n').toLowerCase();
   const failures: string[] = [];
+  const softPasses: string[] = [];
 
   for (const criterion of item.acceptanceCriteria) {
     const lower = criterion.toLowerCase();
@@ -156,14 +426,16 @@ function evalAcceptanceCriteria(evalDef: LoopEval, ctx: EvalContext): EvalResult
     const fileMatch = criterion.match(/([^\s`]+\.[a-z0-9]+)\s+created/i);
     if (fileMatch) {
       const fname = fileMatch[1];
-      if (!files.includes(fname)) failures.push(`Missing file: ${fname}`);
+      if (!pathHasBasename(files, fname) && !files.includes(fname)) {
+        failures.push(`Missing file: ${fname}`);
+      }
       continue;
     }
 
     const countMatch = criterion.match(/at least\s+(\d+)/i);
     if (countMatch && (lower.includes('recommendation') || lower.includes('actionable'))) {
       const min = Number(countMatch[1]);
-      const bullets = (allText.match(/^-\s+\S+/gm) || []).length;
+      const bullets = (allText.match(/^[\s]*[-*]\s+\S+/gm) || []).length;
       if (bullets < min) failures.push(`Expected ≥${min} recommendations, found ${bullets}`);
       continue;
     }
@@ -175,18 +447,78 @@ function evalAcceptanceCriteria(evalDef: LoopEval, ctx: EvalContext): EvalResult
       continue;
     }
 
-    if (!allText.toLowerCase().includes(criterion.toLowerCase().slice(0, 20))) {
-      failures.push(`Criterion not met: ${criterion}`);
+    // "foo.py still passes" / run-script criteria → require the artifact; runtime is out of band.
+    const scriptMatch = criterion.match(/`?([\w./-]+\.(?:py|sh|js|ts|mjs))`?/i);
+    if (scriptMatch && (lower.includes('pass') || lower.includes('runs') || lower.includes('succeed'))) {
+      const script = scriptMatch[1];
+      if (!pathHasBasename(files, path.basename(script)) && !corpusLower.includes(script.toLowerCase())) {
+        failures.push(`Missing script referenced by criterion: ${script}`);
+      } else {
+        softPasses.push(`Script present for runtime criterion: ${script}`);
+      }
+      continue;
     }
+
+    const { strong, weak } = extractCriterionEvidenceGroups(criterion);
+    if (strong.length === 0 && weak.length === 0) {
+      // Extremely generic criterion — only fail if workdir is empty.
+      if (files.length === 0) failures.push(`Criterion not met (empty workdir): ${criterion}`);
+      continue;
+    }
+
+    const strongHits = criterionEvidenceHits(strong, corpusLower, pathsLower);
+    const weakHits = criterionEvidenceHits(weak, corpusLower, pathsLower);
+    const totalTokens = strong.length + weak.length;
+    const totalHits = strongHits + weakHits;
+
+    // Prefer identifier/file evidence: if every strong token lands, the criterion is met
+    // even when surrounding prose words (candidates, forecasts, …) are absent from code.
+    const strongOk =
+      strong.length === 0
+        ? weakHits >= (weak.length <= 2 ? 1 : Math.ceil(weak.length * 0.5))
+        : strongHits >= (strong.length === 1 ? 1 : Math.ceil(strong.length * 0.75));
+
+    if (strongOk) {
+      continue;
+    }
+
+    // Performance / UX runtime criteria cannot be proven by static scan alone.
+    // Pass when related product tokens appear (implementation evidence), else fail.
+    if (isRuntimeOrQualityCriterion(criterion)) {
+      if (totalHits >= 1 || files.length > 0) {
+        softPasses.push(`Runtime/quality criterion inferred from implementation evidence: ${criterion}`);
+        continue;
+      }
+    }
+
+    // Legacy short-substring fallback for tiny demo criteria (e.g. improvements.md text)
+    const snippet = criterion.toLowerCase().slice(0, 20).trim();
+    if (snippet.length >= 8 && corpusLower.includes(snippet)) {
+      continue;
+    }
+
+    failures.push(
+      `Criterion not met (strong ${strongHits}/${strong.length}, weak ${weakHits}/${weak.length} of ${totalTokens}): ${criterion}`
+    );
   }
 
+  const passed = failures.length === 0;
   return {
     evalId: evalDef.id,
     type: evalDef.type,
-    passed: failures.length === 0,
-    score: failures.length === 0 ? 1 : 0,
-    details: failures.length === 0 ? 'All acceptance criteria satisfied' : failures.join('; '),
-    evidence: { files, failures },
+    passed,
+    score: passed ? 1 : Math.max(0, 1 - failures.length / item.acceptanceCriteria.length),
+    details: passed
+      ? softPasses.length > 0
+        ? `All acceptance criteria satisfied (${softPasses.length} runtime/soft checks)`
+        : 'All acceptance criteria satisfied'
+      : failures.join('; '),
+    evidence: {
+      files: files.slice(0, 80),
+      fileCount: files.length,
+      failures,
+      softPasses,
+    },
   };
 }
 

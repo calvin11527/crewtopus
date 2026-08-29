@@ -222,7 +222,32 @@ function inferActivityStatus(activity: WorkItemActivity): AgentHistoryStatus {
     event === 'lifecycle_recover_ba' ||
     event === 'loop_iteration_completed'
   ) {
+    // Harness can block completion even when the reviewer said APPROVED.
+    if (
+      activity.metadata?.evalBlocked === true ||
+      activity.metadata?.evalsPassed === false ||
+      /evals blocked/i.test(activity.summary)
+    ) {
+      return 'failed';
+    }
     return 'completed';
+  }
+
+  if (event === 'loop_eval_blocked' || event === 'pipeline_finished') {
+    if (
+      activity.metadata?.loopStatus === 'approved' ||
+      /\bloop:\s*approved\b/i.test(activity.summary)
+    ) {
+      return 'completed';
+    }
+    if (
+      activity.metadata?.loopStatus === 'escalated' ||
+      activity.metadata?.loopStatus === 'failed' ||
+      /blocked/i.test(activity.summary)
+    ) {
+      return 'failed';
+    }
+    return 'info';
   }
 
   return 'info';

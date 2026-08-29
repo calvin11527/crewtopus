@@ -4,7 +4,7 @@
 
 - **Agent** — a named crew member (hired / registered), staffed onto sprint roles.
 - **Adapter type** — which CLI/provider runs work: `grok`, `copilot`, `claude`, `ollama`, `antigravity`, `mock`.
-- **Model** — provider-specific model id (e.g. `auto`, `grok-build`, Ollama tag).
+- **Model** — provider-specific model id (e.g. `auto`, `grok-4.5`, Ollama tag).
 
 Budget and hard blocks are tracked **per adapter type**, not per model. Switching model alone may not unblock a provider that is over quota.
 

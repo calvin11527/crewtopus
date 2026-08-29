@@ -59,6 +59,8 @@ export function getEscalationRetryContext(workItemId: string): EscalationRetryCo
   let implementOutput = '';
   let implementAuditId: string | undefined;
 
+  let harnessEvalFailures = '';
+
   for (const entry of activity) {
     if (entry.activityType === 'agent_completed') {
       const phase = entry.metadata?.pipelinePhase;
@@ -78,26 +80,53 @@ export function getEscalationRetryContext(workItemId: string): EscalationRetryCo
 
     if (entry.metadata?.event === 'loop_iteration_completed' && !reviewFeedback) {
       const verdict = entry.metadata.verdict;
-      if (verdict === 'changes_requested' || verdict === 'unknown') {
+      if (verdict === 'changes_requested' || verdict === 'unknown' || verdict === 'approved') {
         reviewAuditId = entry.metadata.reviewAuditId as string | undefined;
-        reviewFeedback = auditContent(reviewAuditId);
+        reviewFeedback = auditContent(reviewAuditId) || reviewFeedback;
       }
       if (!implementOutput) {
         implementAuditId = entry.metadata.implementAuditId as string | undefined;
         implementOutput = auditContent(implementAuditId);
       }
     }
+
+    if (
+      !harnessEvalFailures &&
+      (entry.metadata?.event === 'loop_eval_completed' ||
+        entry.metadata?.event === 'loop_eval_blocked' ||
+        entry.metadata?.event === 'loop_iteration_completed')
+    ) {
+      const evalResults = entry.metadata?.evalResults as
+        | Array<{ evalId?: string; type?: string; passed?: boolean; details?: string }>
+        | undefined;
+      const failed = (evalResults ?? []).filter((e) => e && e.passed === false);
+      if (failed.length > 0) {
+        harnessEvalFailures = failed
+          .map((e) => `- ${e.evalId ?? 'eval'} (${e.type ?? '?'}): ${e.details ?? 'failed'}`)
+          .join('\n');
+      }
+    }
   }
 
-  if (!reviewFeedback && !implementOutput) return null;
+  if (!reviewFeedback && !implementOutput && !harnessEvalFailures) return null;
+
+  const feedbackParts = [
+    reviewFeedback ||
+      'Prior loop did not complete successfully — re-assess deliverables against acceptance criteria.',
+  ];
+  if (harnessEvalFailures) {
+    feedbackParts.push(
+      '',
+      '## Harness eval failures (must fix before the loop can complete)',
+      harnessEvalFailures
+    );
+  }
 
   return {
     priorImplementation:
       implementOutput ||
       'Prior implementation is in the work directory — re-read deliverable files before reviewing.',
-    reviewFeedback:
-      reviewFeedback ||
-      'Prior loop escalated after repeated CHANGES_REQUESTED — re-assess deliverables against acceptance criteria.',
+    reviewFeedback: feedbackParts.join('\n'),
     implementAuditId,
     reviewAuditId,
   };
@@ -196,9 +225,27 @@ export function enqueueLoopRetry(
 export function shouldAutoChainFixLoop(
   payload: LoopRetryPayload,
   loopStatus: LoopStatus,
-  reviewVerdict: string
+  reviewVerdict: string,
+  options?: { evalsPassed?: boolean }
 ): boolean {
   if (payload.autoChainFix === false) return false;
   if (payload.retryMode !== 'review_only') return false;
-  return loopStatus === 'escalated' || reviewVerdict === 'changes_requested';
+  // Already succeeded — do not re-queue work.
+  if (loopStatus === 'approved' || loopStatus === 'cancelled') return false;
+
+  // Reviewer wants changes, or harness escalated / failed the loop.
+  if (loopStatus === 'escalated' || loopStatus === 'failed') return true;
+  if (reviewVerdict === 'changes_requested') return true;
+
+  // Reviewer APPROVED but acceptance / harness evals still block completion.
+  // Previously this left the item at idle and looked "stuck successful".
+  if (options?.evalsPassed === false) return true;
+
+  return false;
+}
+
+/** True when harness evals ran and at least one failed (or none passed). */
+export function evalsIndicateBlock(evalResults?: Array<{ passed: boolean }> | null): boolean {
+  if (!evalResults || evalResults.length === 0) return false;
+  return evalResults.some((e) => !e.passed);
 }

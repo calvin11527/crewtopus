@@ -26,6 +26,9 @@ export interface AgentModelOption {
 
 export type AgentModelCatalog = Partial<Record<AgentType, AgentModelOption[]>>;
 
+/** Current Grok CLI default (see `grok models`). Override with GROK_DEFAULT_MODEL. */
+export const DEFAULT_GROK_MODEL = 'grok-4.5';
+
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 
 const STATIC_MODELS: Partial<Record<AgentType, AgentModelOption[]>> = {
@@ -122,9 +125,12 @@ async function listGrokModels(): Promise<AgentModelOption[]> {
   const cached = readGrokModelsCache();
   if (cached.length > 0) {
     if (!cached.some((m) => m.isDefault)) {
-      const defaultId = process.env.GROK_DEFAULT_MODEL || 'grok-composer-2.5-fast';
+      const defaultId = process.env.GROK_DEFAULT_MODEL || DEFAULT_GROK_MODEL;
       for (const option of cached) {
         if (option.id === defaultId) option.isDefault = true;
+      }
+      if (!cached.some((m) => m.isDefault) && cached[0]) {
+        cached[0].isDefault = true;
       }
     }
     return cached;
@@ -135,12 +141,11 @@ async function listGrokModels(): Promise<AgentModelOption[]> {
 
   return [
     {
-      id: 'grok-composer-2.5-fast',
-      label: 'Composer 2.5 Fast',
+      id: DEFAULT_GROK_MODEL,
+      label: 'Grok 4.5',
       description: 'Grok CLI default coding model',
       isDefault: true,
     },
-    { id: 'grok-build', label: 'Grok Build', description: 'xAI coding model' },
   ];
 }
 
@@ -267,7 +272,7 @@ function defaultModelForType(type: AgentType, catalog?: AgentModelOption[]): str
   const fromCatalog = catalog?.find((m) => m.isDefault)?.id ?? catalog?.[0]?.id;
   if (fromCatalog) return fromCatalog;
 
-  if (type === 'grok') return 'grok-composer-2.5-fast';
+  if (type === 'grok') return DEFAULT_GROK_MODEL;
   if (type === 'ollama') return process.env.OLLAMA_MODEL || DEFAULT_LOCAL_MODEL_ID;
   if (type === 'mock') return 'mock';
   return undefined;

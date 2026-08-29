@@ -226,10 +226,26 @@ function resolveFinalState(
   iteration: number,
   maxIterations: number,
   autoLoop: boolean,
-  onExhausted: WorkflowLoop['onExhausted']
+  onExhausted: WorkflowLoop['onExhausted'],
+  options?: { evalBlocked?: boolean }
 ): { status: WorkItemStatus; loopStatus: LoopStatus; needsHumanApproval?: boolean } {
-  if (reviewVerdict === 'approved') {
+  if (reviewVerdict === 'approved' && !options?.evalBlocked) {
     return { status: 'done', loopStatus: 'approved' };
+  }
+
+  // Harness evals failed (eval_pass) — never report done/approved, and never leave
+  // review-only runs as misleading idle/todo after a reviewer "APPROVED".
+  if (options?.evalBlocked) {
+    if (autoLoop && iteration < maxIterations) {
+      return { status: 'in_progress', loopStatus: 'running' };
+    }
+    if (onExhausted === 'fail') {
+      return { status: 'todo', loopStatus: 'failed' };
+    }
+    if (onExhausted === 'human_approval') {
+      return { status: 'in_review', loopStatus: 'escalated', needsHumanApproval: true };
+    }
+    return { status: 'in_review', loopStatus: 'escalated' };
   }
 
   if (reviewVerdict === 'changes_requested') {
@@ -245,10 +261,34 @@ function resolveFinalState(
     if (autoLoop && iteration < maxIterations) {
       return { status: 'in_progress', loopStatus: 'running' };
     }
-    return { status: 'todo', loopStatus: 'idle' };
+    // Single-pass / review-only with explicit CHANGES_REQUESTED → escalate so
+    // auto-chain can queue a fix loop (idle dead-ends look like "stuck success").
+    return { status: 'in_review', loopStatus: 'escalated' };
   }
 
   return { status: 'in_review', loopStatus: 'idle' };
+}
+
+function formatEvalBlockSummary(evalResults: EvalResult[]): string {
+  if (evalResults.length === 0) return 'no evals';
+  const passed = evalResults.filter((e) => e.passed).length;
+  const failed = evalResults.filter((e) => !e.passed);
+  const failBits = failed
+    .slice(0, 3)
+    .map((e) => `${e.evalId}: ${e.details.slice(0, 120)}`)
+    .join(' | ');
+  return `${passed}/${evalResults.length} passed${failBits ? ` — ${failBits}` : ''}`;
+}
+
+function appendEvalFailuresToFeedback(reviewFeedback: string, evalResults: EvalResult[]): string {
+  const failed = evalResults.filter((e) => !e.passed);
+  if (failed.length === 0) return reviewFeedback;
+  const block = [
+    '',
+    '## Harness eval failures (must fix before the loop can complete)',
+    ...failed.map((e) => `- ${e.evalId} (${e.type}): ${e.details}`),
+  ].join('\n');
+  return `${reviewFeedback || 'Reviewer feedback unavailable.'}${block}`;
 }
 
 /** Build a synthetic context scope from loop transcript for human approval. */
@@ -825,15 +865,24 @@ export async function runAgentLoop(input: {
       const iterationDurationMs = Date.now() - iterationStartMs;
       recordIterationDuration(loop.id, iterationDurationMs, loop.steps.length);
 
+      const evalsPassed = evals.length === 0 || allEvalsPassed(lastEvalResults);
+      const evalBlocked = loop.until === 'eval_pass' && !evalsPassed;
+      const evalSummary = formatEvalBlockSummary(lastEvalResults);
+
       if (workItemId) {
+        const iterationOutcome = evalBlocked
+          ? `${reviewVerdict} (evals blocked: ${evalSummary})`
+          : reviewVerdict;
         logWorkItemActivity({
           workItemId,
           activityType: 'comment',
-          summary: `Loop iteration ${iteration}/${maxIterations} finished → ${reviewVerdict}`,
+          summary: `Loop iteration ${iteration}/${maxIterations} finished → ${iterationOutcome}`,
           metadata: {
             loopIteration: iteration,
             maxLoopIterations: maxIterations,
             verdict: reviewVerdict,
+            evalsPassed,
+            evalBlocked,
             event: 'loop_iteration_completed',
             implementAuditId: iterationImplementAuditId,
             reviewAuditId: iterationReviewAuditId,
@@ -848,7 +897,6 @@ export async function runAgentLoop(input: {
         });
       }
 
-      const evalsPassed = evals.length === 0 || allEvalsPassed(lastEvalResults);
       const loopSucceeded =
         loop.until === 'eval_pass'
           ? evalsPassed
@@ -868,6 +916,11 @@ export async function runAgentLoop(input: {
         break;
       }
 
+      // Surface harness failures to the next implement pass even when review said APPROVED.
+      if (evalBlocked) {
+        lastReviewFeedback = appendEvalFailuresToFeedback(lastReviewFeedback || iterationReviewOutput, lastEvalResults);
+      }
+
       const needsAnotherPass =
         loop.until === 'eval_pass'
           ? !evalsPassed
@@ -877,16 +930,18 @@ export async function runAgentLoop(input: {
 
       if (!shouldContinue) {
         const effectiveVerdict: ReviewVerdict =
-          loop.until === 'eval_pass' && !evalsPassed && reviewVerdict === 'approved'
+          evalBlocked && reviewVerdict === 'approved'
             ? 'changes_requested'
             : reviewVerdict;
 
         const final = item
-          ? resolveFinalState(effectiveVerdict, iteration, maxIterations, autoLoop, loop.onExhausted)
+          ? resolveFinalState(effectiveVerdict, iteration, maxIterations, autoLoop, loop.onExhausted, {
+              evalBlocked,
+            })
           : {
               status: 'in_review' as WorkItemStatus,
               loopStatus:
-                reviewVerdict === 'changes_requested' && iteration >= maxIterations
+                evalBlocked || reviewVerdict === 'changes_requested'
                   ? loop.onExhausted === 'fail'
                     ? ('failed' as LoopStatus)
                     : ('escalated' as LoopStatus)
@@ -899,6 +954,25 @@ export async function runAgentLoop(input: {
             loop_id: loop.id,
           });
         }
+        if (item && evalBlocked) {
+          logWorkItemActivity({
+            workItemId: workItemId!,
+            activityType: 'comment',
+            summary:
+              reviewVerdict === 'approved'
+                ? `Blocked: reviewer APPROVED but harness evals failed (${evalSummary}) — loop ${final.loopStatus}`
+                : `Blocked on harness evals (${evalSummary}) — loop ${final.loopStatus}`,
+            metadata: {
+              event: 'loop_eval_blocked',
+              loopRunId,
+              loopId: loop.id,
+              reviewVerdict,
+              loopStatus: final.loopStatus,
+              evalResults: lastEvalResults,
+              evalsPassed: false,
+            },
+          });
+        }
         if (item && final.needsHumanApproval) {
           const { createApprovalRequest } = await import('./approval-gate');
           createApprovalRequest(
@@ -907,14 +981,16 @@ export async function runAgentLoop(input: {
             {
               workItemId: workItemId!,
               loopRunId: loopRunId,
-              summary: `Loop exhausted after ${iteration} iteration(s) on ${item.key} — human review required`,
+              summary: evalBlocked
+                ? `Harness evals blocked ${item.key} after ${iteration} iteration(s) — human review required`
+                : `Loop exhausted after ${iteration} iteration(s) on ${item.key} — human review required`,
             }
           );
           logWorkItemActivity({
             workItemId: workItemId!,
             activityType: 'comment',
             summary: `Loop escalated to human approval after ${iteration} iteration(s)`,
-            metadata: { loopRunId, loopId: loop.id, reviewVerdict },
+            metadata: { loopRunId, loopId: loop.id, reviewVerdict, evalBlocked },
           });
         }
         if (item) {
@@ -931,11 +1007,26 @@ export async function runAgentLoop(input: {
     }
 
     if (workItemId) {
+      const finishedSummary =
+        loopStatus === 'approved'
+          ? `Pipeline finished after ${iteration} iteration(s): approved (loop: approved)`
+          : `Pipeline finished after ${iteration} iteration(s): review=${reviewVerdict}, loop=${loopStatus}` +
+            (lastEvalResults.length
+              ? `, evals ${formatEvalBlockSummary(lastEvalResults)}`
+              : '');
       logWorkItemActivity({
         workItemId,
         activityType: 'comment',
-        summary: `Pipeline finished after ${iteration} iteration(s): ${reviewVerdict} (loop: ${loopStatus})`,
-        metadata: { reviewVerdict, loopStatus, iterations: iteration, loopId: loop.id, tokensUsed },
+        summary: finishedSummary,
+        metadata: {
+          reviewVerdict,
+          loopStatus,
+          iterations: iteration,
+          loopId: loop.id,
+          tokensUsed,
+          evalResults: lastEvalResults,
+          event: 'pipeline_finished',
+        },
       });
       clearLoopCancel(workItemId);
     }

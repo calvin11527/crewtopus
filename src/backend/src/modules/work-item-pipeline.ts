@@ -268,11 +268,24 @@ export async function runWorkItemReviewRetry(
     jobId: options.jobId,
   });
 
-  if (payload.autoChainFix !== false && (result.reviewVerdict === 'changes_requested' || result.loopStatus === 'escalated')) {
+  const evalsBlocked = (result.evalResults ?? []).some((e) => !e.passed);
+  const shouldChain =
+    payload.autoChainFix !== false &&
+    result.loopStatus !== 'approved' &&
+    (result.reviewVerdict === 'changes_requested' ||
+      result.loopStatus === 'escalated' ||
+      result.loopStatus === 'failed' ||
+      evalsBlocked);
+
+  if (shouldChain) {
+    const summary =
+      result.reviewVerdict === 'approved' && evalsBlocked
+        ? `${item.key}: reviewer APPROVED but harness evals failed — developer fix loop auto-queued`
+        : `${item.key}: review requested changes — developer fix loop auto-queued`;
     const chained = enqueueLoopRetry(id, workflowId, {
       retryMode: 'escalation_continue',
       orchestrator: 'review_retry_chain',
-      summary: `${item.key}: review requested changes — developer fix loop auto-queued`,
+      summary,
     });
     return { ...result, chainedJobId: chained.job.id };
   }
