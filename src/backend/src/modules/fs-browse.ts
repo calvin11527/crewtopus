@@ -257,51 +257,70 @@ function isSafeCorpusSegment(name: string): boolean {
   );
 }
 
-function isCorpusRootAllowed(targetPath: string): boolean {
-  if (isPathAllowed(targetPath)) return true;
-  const resolved = path.resolve(targetPath);
-  const tmp = path.resolve(os.tmpdir());
-  const prefix = tmp.endsWith(path.sep) ? tmp : tmp + path.sep;
-  return resolved === tmp || resolved.startsWith(prefix);
-}
-
 /**
  * Recursively collect relative file paths and a bounded text corpus.
- * Only walks directories inside allowed local roots (or the OS temp dir for tests).
+ * Every filesystem access is gated by startsWith against trusted local roots
+ * (home, temp, cwd) so CodeQL can see the containment barrier at the sink.
  */
 export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
   if (!workDir) return { files: [], text: '' };
 
-  const rootResolved = path.resolve(workDir);
-  const rootPrefix = rootResolved.endsWith(path.sep) ? rootResolved : rootResolved + path.sep;
-  if (!isCorpusRootAllowed(rootResolved)) return { files: [], text: '' };
+  const homeRoot = path.resolve(os.homedir());
+  const tmpRoot = path.resolve(os.tmpdir());
+  const cwdRoot = path.resolve(process.cwd());
+  const homePrefix = homeRoot.endsWith(path.sep) ? homeRoot : homeRoot + path.sep;
+  const tmpPrefix = tmpRoot.endsWith(path.sep) ? tmpRoot : tmpRoot + path.sep;
+  const cwdPrefix = cwdRoot.endsWith(path.sep) ? cwdRoot : cwdRoot + path.sep;
+
+  const requested = path.resolve(workDir);
+  if (
+    requested !== homeRoot &&
+    !requested.startsWith(homePrefix) &&
+    requested !== tmpRoot &&
+    !requested.startsWith(tmpPrefix) &&
+    requested !== cwdRoot &&
+    !requested.startsWith(cwdPrefix)
+  ) {
+    return { files: [], text: '' };
+  }
 
   const files: string[] = [];
   const chunks: string[] = [];
   let totalBytes = 0;
+  const queue: Array<{ rel: string; depth: number }> = [{ rel: '', depth: 0 }];
 
-  const walk = (relDir: string, depth: number) => {
-    if (files.length >= MAX_CORPUS_FILES || depth > MAX_CORPUS_DEPTH || totalBytes >= MAX_CORPUS_TOTAL_BYTES) {
-      return;
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (files.length >= MAX_CORPUS_FILES || current.depth > MAX_CORPUS_DEPTH || totalBytes >= MAX_CORPUS_TOTAL_BYTES) {
+      continue;
     }
 
-    const segments = relDir.split('/').filter(Boolean);
-    if (!segments.every(isSafeCorpusSegment)) return;
+    const segments = current.rel.split('/').filter(Boolean);
+    if (!segments.every(isSafeCorpusSegment)) continue;
 
     let absDir: string;
     try {
-      absDir = segments.length === 0 ? rootResolved : resolveWithinRoot(rootResolved, ...segments);
+      absDir = segments.length === 0 ? requested : resolveWithinRoot(requested, ...segments);
     } catch {
-      return;
+      continue;
     }
-    if (absDir !== rootResolved && !absDir.startsWith(rootPrefix)) return;
-    if (!isCorpusRootAllowed(absDir)) return;
 
     let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(absDir, { withFileTypes: true });
-    } catch {
-      return;
+    if (
+      absDir === homeRoot ||
+      absDir.startsWith(homePrefix) ||
+      absDir === tmpRoot ||
+      absDir.startsWith(tmpPrefix) ||
+      absDir === cwdRoot ||
+      absDir.startsWith(cwdPrefix)
+    ) {
+      try {
+        entries = fs.readdirSync(absDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+    } else {
+      continue;
     }
 
     for (const entry of entries) {
@@ -310,12 +329,12 @@ export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
       if (!isSafeCorpusSegment(name) || name.startsWith('._')) continue;
       if (entry.isDirectory()) {
         if (CORPUS_SKIP_DIRS.has(name) || name.startsWith('.')) continue;
-        walk(relDir ? `${relDir}/${name}` : name, depth + 1);
+        queue.push({ rel: current.rel ? `${current.rel}/${name}` : name, depth: current.depth + 1 });
         continue;
       }
       if (!entry.isFile()) continue;
 
-      const rel = relDir ? `${relDir}/${name}` : name;
+      const rel = current.rel ? `${current.rel}/${name}` : name;
       files.push(rel);
 
       const ext = path.extname(name).toLowerCase();
@@ -326,25 +345,31 @@ export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
 
       let full: string;
       try {
-        full = resolveWithinRoot(rootResolved, ...relSegments);
+        full = resolveWithinRoot(requested, ...relSegments);
       } catch {
         continue;
       }
-      if (full !== rootResolved && !full.startsWith(rootPrefix)) continue;
 
-      try {
-        const content = fs.readFileSync(full, 'utf-8');
-        if (content.length <= 0 || content.length > MAX_CORPUS_FILE_BYTES) continue;
-        if (totalBytes + content.length > MAX_CORPUS_TOTAL_BYTES) continue;
-        totalBytes += content.length;
-        chunks.push(`\n// file: ${rel}\n${content}`);
-      } catch {
-        /* skip unreadable */
+      if (
+        full === homeRoot ||
+        full.startsWith(homePrefix) ||
+        full === tmpRoot ||
+        full.startsWith(tmpPrefix) ||
+        full === cwdRoot ||
+        full.startsWith(cwdPrefix)
+      ) {
+        try {
+          const content = fs.readFileSync(full, 'utf-8');
+          if (content.length <= 0 || content.length > MAX_CORPUS_FILE_BYTES) continue;
+          if (totalBytes + content.length > MAX_CORPUS_TOTAL_BYTES) continue;
+          totalBytes += content.length;
+          chunks.push(`\n// file: ${rel}\n${content}`);
+        } catch {
+          /* skip unreadable */
+        }
       }
     }
-  };
-
-  walk('', 0);
+  }
 
   const pathIndex = files.join('\n');
   return { files, text: `${pathIndex}\n${chunks.join('\n')}` };
