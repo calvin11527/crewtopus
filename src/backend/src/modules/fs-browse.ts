@@ -186,3 +186,166 @@ export function validateProjectDirectory(inputPath: string): FsValidateResult {
     isGitRepo: hasGitRepo(resolved),
   };
 }
+
+const CORPUS_SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.grok',
+  '.kiro',
+  'dist',
+  'build',
+  'coverage',
+  '.venv',
+  'venv',
+  '__pycache__',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.next',
+  '.turbo',
+  'target',
+  'vendor',
+]);
+
+const CORPUS_TEXT_EXTENSIONS = new Set([
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.py',
+  '.md',
+  '.json',
+  '.yml',
+  '.yaml',
+  '.toml',
+  '.css',
+  '.html',
+  '.txt',
+  '.sh',
+  '.sql',
+  '.rs',
+  '.go',
+  '.java',
+  '.rb',
+  '.php',
+  '.swift',
+  '.kt',
+  '.cs',
+]);
+
+const MAX_CORPUS_FILES = 500;
+const MAX_CORPUS_DEPTH = 8;
+const MAX_CORPUS_FILE_BYTES = 80_000;
+const MAX_CORPUS_TOTAL_BYTES = 2_500_000;
+
+export interface WorkDirCorpus {
+  /** Relative paths (posix-style) found under workDir. */
+  files: string[];
+  /** Concatenated path names + readable file contents. */
+  text: string;
+}
+
+function isSafeCorpusSegment(name: string): boolean {
+  return (
+    Boolean(name) &&
+    name !== '.' &&
+    name !== '..' &&
+    !name.includes('\0') &&
+    !name.includes('/') &&
+    !name.includes('\\')
+  );
+}
+
+function isCorpusRootAllowed(targetPath: string): boolean {
+  if (isPathAllowed(targetPath)) return true;
+  const resolved = path.resolve(targetPath);
+  const tmp = path.resolve(os.tmpdir());
+  const prefix = tmp.endsWith(path.sep) ? tmp : tmp + path.sep;
+  return resolved === tmp || resolved.startsWith(prefix);
+}
+
+/**
+ * Recursively collect relative file paths and a bounded text corpus.
+ * Only walks directories inside allowed local roots (or the OS temp dir for tests).
+ */
+export function buildWorkDirCorpus(workDir?: string): WorkDirCorpus {
+  if (!workDir) return { files: [], text: '' };
+
+  const rootResolved = path.resolve(workDir);
+  const rootPrefix = rootResolved.endsWith(path.sep) ? rootResolved : rootResolved + path.sep;
+  if (!isCorpusRootAllowed(rootResolved)) return { files: [], text: '' };
+
+  const files: string[] = [];
+  const chunks: string[] = [];
+  let totalBytes = 0;
+
+  const walk = (relDir: string, depth: number) => {
+    if (files.length >= MAX_CORPUS_FILES || depth > MAX_CORPUS_DEPTH || totalBytes >= MAX_CORPUS_TOTAL_BYTES) {
+      return;
+    }
+
+    const segments = relDir.split('/').filter(Boolean);
+    if (!segments.every(isSafeCorpusSegment)) return;
+
+    let absDir: string;
+    try {
+      absDir = segments.length === 0 ? rootResolved : resolveWithinRoot(rootResolved, ...segments);
+    } catch {
+      return;
+    }
+    if (absDir !== rootResolved && !absDir.startsWith(rootPrefix)) return;
+    if (!isCorpusRootAllowed(absDir)) return;
+
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (files.length >= MAX_CORPUS_FILES || totalBytes >= MAX_CORPUS_TOTAL_BYTES) break;
+      const name = entry.name;
+      if (!isSafeCorpusSegment(name) || name.startsWith('._')) continue;
+      if (entry.isDirectory()) {
+        if (CORPUS_SKIP_DIRS.has(name) || name.startsWith('.')) continue;
+        walk(relDir ? `${relDir}/${name}` : name, depth + 1);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+
+      const rel = relDir ? `${relDir}/${name}` : name;
+      files.push(rel);
+
+      const ext = path.extname(name).toLowerCase();
+      if (!CORPUS_TEXT_EXTENSIONS.has(ext)) continue;
+
+      const relSegments = rel.split('/').filter(Boolean);
+      if (!relSegments.every(isSafeCorpusSegment)) continue;
+
+      let full: string;
+      try {
+        full = resolveWithinRoot(rootResolved, ...relSegments);
+      } catch {
+        continue;
+      }
+      if (full !== rootResolved && !full.startsWith(rootPrefix)) continue;
+
+      try {
+        const content = fs.readFileSync(full, 'utf-8');
+        if (content.length <= 0 || content.length > MAX_CORPUS_FILE_BYTES) continue;
+        if (totalBytes + content.length > MAX_CORPUS_TOTAL_BYTES) continue;
+        totalBytes += content.length;
+        chunks.push(`\n// file: ${rel}\n${content}`);
+      } catch {
+        /* skip unreadable */
+      }
+    }
+  };
+
+  walk('', 0);
+
+  const pathIndex = files.join('\n');
+  return { files, text: `${pathIndex}\n${chunks.join('\n')}` };
+}

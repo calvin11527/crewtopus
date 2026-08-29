@@ -19,7 +19,7 @@ paths-ignore:
 query-filters:
   - exclude:
       id: js/path-injection
-      paths: |
-        src/backend/src/utils/safe-path.ts
-        src/backend/src/modules/fs-browse.ts
-        src/backend/src/modules/eval-harness.ts
+      paths:
+        - "src/backend/src/utils/safe-path.ts"
+        - "src/backend/src/modules/fs-browse.ts"
+        - "src/backend/src/modules/eval-harness.ts"
