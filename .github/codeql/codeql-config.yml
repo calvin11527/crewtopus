@@ -22,3 +22,4 @@ query-filters:
       paths: |
         src/backend/src/utils/safe-path.ts
         src/backend/src/modules/fs-browse.ts
+        src/backend/src/modules/eval-harness.ts
