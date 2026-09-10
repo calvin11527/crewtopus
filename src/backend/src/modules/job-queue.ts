@@ -4,6 +4,7 @@ import { setGauge, incrementCounter } from '../metrics';
 import type { WorkItemStatus } from '../types';
 import { getWorkItem, updateWorkItem } from './work-items';
 import { logWorkItemActivity } from './work-item-activity';
+import { envString } from '../utils/env';
 
 
 export type LoopJobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -369,7 +370,7 @@ interface RedisNotifyClient {
 let redisClientPromise: Promise<RedisNotifyClient | null> | null = null;
 
 async function getRedisClient(): Promise<RedisNotifyClient | null> {
-  const url = process.env.AGENTHUB_REDIS_URL || process.env.REDIS_URL;
+  const url = envString('CREWTOPUS_REDIS_URL', 'AGENTHUB_REDIS_URL', 'REDIS_URL');
   if (!url) return null;
 
   if (!redisClientPromise) {

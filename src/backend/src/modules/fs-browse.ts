@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { resolveWithinRoot } from '../utils/safe-path';
+import { envString, envWorkDir } from '../utils/env';
 
 export interface FsDirectoryEntry {
   name: string;
@@ -51,8 +52,8 @@ export function getAllowedRoots(): string[] {
   const roots = [
     os.homedir(),
     process.cwd(),
-    process.env.AGENTHUB_WORK_DIR,
-    ...(process.env.AGENTHUB_FS_ALLOWLIST?.split(',') ?? []),
+    envWorkDir(),
+    ...(envString('CREWTOPUS_FS_ALLOWLIST', 'AGENTHUB_FS_ALLOWLIST')?.split(',') ?? []),
   ]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .map((value) => resolveBrowsePath(value));

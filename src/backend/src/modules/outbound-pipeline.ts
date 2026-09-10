@@ -25,6 +25,7 @@ import { recordRunLearning } from './capability-learning';
 import { incrementCounter } from '../metrics';
 import { broadcast } from '../websocket';
 import { now } from '../utils/helpers';
+import { envFlag, envWorkDir } from '../utils/env';
 
 export class PrivacyBlockedError extends Error {
   readonly reasons: string[];
@@ -115,8 +116,8 @@ export function isMockFallbackAllowed(request: {
 }): boolean {
   if (request.agentType === 'mock') return true;
   if (request.allowMockFallback === true || request.demo === true) return true;
-  if (process.env.AGENTHUB_ALLOW_MOCK_FALLBACK === 'true') return true;
-  if (process.env.AGENTHUB_DISABLE_MOCK_FALLBACK === 'true') return false;
+  if (envFlag('true', 'CREWTOPUS_ALLOW_MOCK_FALLBACK', 'AGENTHUB_ALLOW_MOCK_FALLBACK')) return true;
+  if (envFlag('true', 'CREWTOPUS_DISABLE_MOCK_FALLBACK', 'AGENTHUB_DISABLE_MOCK_FALLBACK')) return false;
   return false;
 }
 
@@ -151,7 +152,7 @@ async function executeAdapterOnce(
     contextScope: effectiveScope,
     config: {
       capability: request.capability,
-      cwd: request.outputDir || request.basePath || process.env.GROK_CWD || process.env.AGENTHUB_WORK_DIR,
+      cwd: request.outputDir || request.basePath || envWorkDir(),
       pipelinePhase: request.pipelinePhase,
       permissionMode: resolvePermissionMode(profile, request.pipelinePhase, request.capability),
       maxOutputBytes: profile.cliMaxOutputBytes,

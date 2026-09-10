@@ -43,6 +43,7 @@ import { closeRedisClient } from './modules/job-queue';
 import { startProviderUsageWatcher } from './modules/usage-meter';
 import { seedCapabilityLearning, capabilityLearningTick } from './modules/capability-learning';
 import { apiAuthMiddleware, resolveApiToken } from './middleware/api-auth';
+import { envNumber } from './utils/env';
 
 const PORT = Number(process.env.PORT) || 3000;
 const startTime = Date.now();
@@ -122,7 +123,7 @@ const learningTimer = setInterval(() => {
   } catch {
     /* best-effort */
   }
-}, Number(process.env.AGENTHUB_LEARNING_TICK_MS) || 6 * 60 * 60 * 1000);
+}, envNumber(6 * 60 * 60 * 1000, 'CREWTOPUS_LEARNING_TICK_MS', 'AGENTHUB_LEARNING_TICK_MS'));
 learningTimer.unref?.();
 
 // Prefer localhost for single-user machines; set HOST=0.0.0.0 only when intentional.

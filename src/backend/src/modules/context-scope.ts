@@ -7,6 +7,7 @@ import { estimateTokens } from '../adapters/base';
 import { scanForSecrets } from './privacy-guard';
 import { isEnvTemplatePath, isExcludedContextPath } from './context-path-filters';
 import { resolveWithinRoot, isPathInside, sanitizeForLog } from '../utils/safe-path';
+import { envWorkDir } from '../utils/env';
 
 /** Priority tier for context file inclusion (lower = higher priority). */
 export type ContextPriorityTier = 1 | 2 | 3 | 4;
@@ -118,9 +119,13 @@ function buildFileEntry(
   let resolved: string;
   if (path.isAbsolute(filePath)) {
     resolved = path.resolve(filePath);
-    const workRoot = process.env.AGENTHUB_WORK_DIR
-      ? path.resolve(process.env.AGENTHUB_WORK_DIR)
-      : path.join(process.cwd(), '.agenthub-work');
+    const workEnv = envWorkDir();
+    const workRoot = workEnv
+      ? path.resolve(workEnv)
+      : fs.existsSync(path.join(process.cwd(), '.agenthub-work')) &&
+          !fs.existsSync(path.join(process.cwd(), '.crewtopus-work'))
+        ? path.join(process.cwd(), '.agenthub-work')
+        : path.join(process.cwd(), '.crewtopus-work');
     if (!isUnderRoot(basePath, resolved) && !isUnderRoot(workRoot, resolved)) {
       return null;
     }

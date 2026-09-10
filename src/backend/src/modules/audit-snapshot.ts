@@ -4,10 +4,11 @@ import zlib from 'zlib';
 import type { ContextScope } from '../types';
 import { canonicalizeScope } from './context-scope';
 import { sanitizePathId } from '../utils/safe-path';
+import { envWorkDir } from '../utils/env';
 
 /** Resolve `.agenthub-work/_audit` directory for context snapshots. */
 export function resolveAuditSnapshotDir(): string {
-  const workDir = process.env.AGENTHUB_WORK_DIR;
+  const workDir = envWorkDir();
   if (workDir?.includes('.agenthub-work')) {
     const parent = path.dirname(workDir);
     if (path.basename(parent) === '.agenthub-work') {

@@ -9,6 +9,7 @@ import {
   type SpawnCliOptions,
 } from './base';
 import { endCliStream, type CliStreamContext } from '../modules/cli-stream';
+import { envFlag, envWorkDir } from '../utils/env';
 
 function grokCommand(): string {
   return process.env.GROK_CLI_PATH || 'grok';
@@ -113,7 +114,7 @@ export function parseGrokOutput(stdout: string): string {
 /** Use live NDJSON streaming when piping CLI output to the work-item console. */
 export function resolveGrokOutputFormat(streamOpts?: SpawnCliOptions): GrokOutputFormat {
   if (!streamOpts?.onStdout) return 'json';
-  if (process.env.AGENTHUB_GROK_STREAM === 'false') return 'json';
+  if (envFlag('false', 'CREWTOPUS_GROK_STREAM', 'AGENTHUB_GROK_STREAM')) return 'json';
   return 'streaming-json';
 }
 
@@ -157,7 +158,7 @@ export class GrokAdapter implements AgentAdapter {
     const cwd =
       (input.config?.cwd as string | undefined) ||
       process.env.GROK_CWD ||
-      process.env.AGENTHUB_WORK_DIR;
+      envWorkDir();
     const capability = input.config?.capability as string | undefined;
     const permissionMode =
       input.config?.permissionMode != null

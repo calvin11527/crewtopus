@@ -4,6 +4,7 @@ import { getDatabase } from '../database';
 import { parseJson } from '../utils/helpers';
 import { getWorkspace } from './workspace';
 import { isEnvTemplatePath } from './context-path-filters';
+import { envString } from '../utils/env';
 
 export type SecretType =
   | 'api_key'
@@ -403,7 +404,7 @@ export function runPrivacyGuard(
   const workspace = workspaceId ? getWorkspace(workspaceId) : null;
   const secretPolicy =
     (workspace?.config.secretPolicy as string | undefined) ||
-    process.env.AGENTHUB_SECRET_POLICY ||
+    envString('CREWTOPUS_SECRET_POLICY', 'AGENTHUB_SECRET_POLICY') ||
     'block';
   const allowSecretRedact = secretPolicy === 'redact_and_continue';
 

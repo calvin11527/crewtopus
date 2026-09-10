@@ -38,7 +38,6 @@ npm run dev
 
 - Backend API: http://localhost:3000
 - Frontend UI: http://localhost:5173
-- Grafana: http://localhost:3001
 
 ### 4. Open the App
 
@@ -117,11 +116,7 @@ Crewtopus
 │   ├── Workflow Designer
 │   ├── Privacy & Security
 │   └── Audit Log Viewer
-└── Infrastructure (Docker/k8s)
-    ├── Redis
-    ├── Ollama
-    ├── Prometheus
-    └── Grafana
+└── Infra: ./demo.sh (API+UI). k8s/Grafana is experimental.
 ```
 
 ## Project Structure

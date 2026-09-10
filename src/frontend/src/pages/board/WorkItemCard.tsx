@@ -48,8 +48,12 @@ export default function WorkItemCard({
     <div
       id={`card-${item.key}`}
       className={`kanban-card${selected ? ' kanban-card--selected' : ''}${item.loopStatus === 'escalated' ? ' kanban-card--escalated' : ''}${item.loopStatus === 'running' ? ' kanban-card--loop-running' : ''}${cardBusy ? ' kanban-card--busy' : ''}${dragging ? ' kanban-card--dragging' : ''}`}
-      draggable
+      draggable={!cardBusy}
       onDragStart={(e) => {
+        if (cardBusy) {
+          e.preventDefault();
+          return;
+        }
         e.dataTransfer.setData('text/plain', `crewtopus-item:${item.id}`);
         e.dataTransfer.effectAllowed = 'move';
       }}

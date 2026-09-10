@@ -4,7 +4,7 @@
 
 - **Node.js ≥ 20**
 - **npm**
-- **Docker Desktop** (optional: Redis, Ollama, Prometheus, Grafana)
+- **Docker Desktop** (optional, for `./demo.sh`)
 - For real agents: Grok, Copilot, Claude Code, Ollama, etc.  
   **Not required** for the mock demo path below.
 
@@ -49,9 +49,6 @@ Or in the UI: **Scrum Board** → **Multi-agent demo** (mock implement → test 
 git clone https://github.com/calvin11527/crewtopus.git
 cd crewtopus/src
 
-# Optional infrastructure
-npm run infra:up
-
 # Dependencies (workspaces)
 npm run setup
 
@@ -66,7 +63,7 @@ npm run dev
 |---------|-----|
 | UI | http://localhost:5173 |
 | API | http://localhost:3000 |
-| Grafana (if infra) | http://localhost:3001 |
+
 
 ## First five minutes (real agents)
 

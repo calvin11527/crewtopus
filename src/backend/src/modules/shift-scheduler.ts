@@ -1,5 +1,6 @@
 import { broadcast } from '../websocket';
 import { now } from '../utils/helpers';
+import { envNumber } from '../utils/env';
 import { getDatabase } from '../database';
 import { isOnShift } from './shift-utils';
 import { getEmployment } from './agent-employment';
@@ -35,8 +36,12 @@ import {
   sprintLifecyclePauseReason,
 } from './story-lifecycle';
 
-const TICK_MS = Number(process.env.AGENTHUB_SHIFT_TICK_MS) || 60_000;
-const STANDUP_INTERVAL_MS = Number(process.env.AGENTHUB_STANDUP_INTERVAL_MS) || 60 * 60 * 1000;
+const TICK_MS = envNumber(60_000, 'CREWTOPUS_SHIFT_TICK_MS', 'AGENTHUB_SHIFT_TICK_MS');
+const STANDUP_INTERVAL_MS = envNumber(
+  60 * 60 * 1000,
+  'CREWTOPUS_STANDUP_INTERVAL_MS',
+  'AGENTHUB_STANDUP_INTERVAL_MS'
+);
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 
 const activeSprintQueues = new Set<string>();

@@ -1,4 +1,5 @@
 import { getDatabase } from '../database';
+import { envNumber } from '../utils/env';
 import { getAgent, listAgents, updateAgentConfig } from './agent-registry';
 import {
   getCopilotProviderTokenUsage,
@@ -21,9 +22,9 @@ const DEFAULT_CREDIT_LIMITS: Record<AgentType, number> = {
 };
 
 const DEFAULT_MONTHLY_TOKEN_QUOTA: Partial<Record<AgentType, number>> = {
-  grok: Number(process.env.AGENTHUB_GROK_MONTHLY_TOKEN_QUOTA) || undefined,
-  claude: Number(process.env.AGENTHUB_CLAUDE_MONTHLY_TOKEN_QUOTA) || undefined,
-  copilot: Number(process.env.AGENTHUB_COPILOT_MONTHLY_TOKEN_QUOTA) || undefined,
+  grok: envNumber(NaN, 'CREWTOPUS_GROK_MONTHLY_TOKEN_QUOTA', 'AGENTHUB_GROK_MONTHLY_TOKEN_QUOTA') || undefined,
+  claude: envNumber(NaN, 'CREWTOPUS_CLAUDE_MONTHLY_TOKEN_QUOTA', 'AGENTHUB_CLAUDE_MONTHLY_TOKEN_QUOTA') || undefined,
+  copilot: envNumber(NaN, 'CREWTOPUS_COPILOT_MONTHLY_TOKEN_QUOTA', 'AGENTHUB_COPILOT_MONTHLY_TOKEN_QUOTA') || undefined,
 };
 
 interface UsageTotals {

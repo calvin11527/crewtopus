@@ -3,15 +3,24 @@ import path from 'path';
 import { getDatabase } from '../database';
 import { cleanupStreamLogs } from './cli-stream';
 import { resolveAuditSnapshotDir } from './audit-snapshot';
+import { envNumber } from '../utils/env';
 
-const CLEANUP_INTERVAL_MS =
-  Number(process.env.AGENTHUB_RESOURCE_CLEANUP_MS) || 60 * 60 * 1000;
-const STREAM_LOG_MAX_AGE_MS =
-  Number(process.env.AGENTHUB_STREAM_LOG_MAX_AGE_MS) || 24 * 60 * 60 * 1000;
-const AUDIT_SNAPSHOT_MAX_AGE_MS =
-  Number(process.env.AGENTHUB_AUDIT_SNAPSHOT_MAX_AGE_MS) || 7 * 24 * 60 * 60 * 1000;
-const LOOP_JOB_RETENTION_MS =
-  Number(process.env.AGENTHUB_LOOP_JOB_RETENTION_MS) || 7 * 24 * 60 * 60 * 1000;
+const CLEANUP_INTERVAL_MS = envNumber(60 * 60 * 1000, 'CREWTOPUS_RESOURCE_CLEANUP_MS', 'AGENTHUB_RESOURCE_CLEANUP_MS');
+const STREAM_LOG_MAX_AGE_MS = envNumber(
+  24 * 60 * 60 * 1000,
+  'CREWTOPUS_STREAM_LOG_MAX_AGE_MS',
+  'AGENTHUB_STREAM_LOG_MAX_AGE_MS'
+);
+const AUDIT_SNAPSHOT_MAX_AGE_MS = envNumber(
+  7 * 24 * 60 * 60 * 1000,
+  'CREWTOPUS_AUDIT_SNAPSHOT_MAX_AGE_MS',
+  'AGENTHUB_AUDIT_SNAPSHOT_MAX_AGE_MS'
+);
+const LOOP_JOB_RETENTION_MS = envNumber(
+  7 * 24 * 60 * 60 * 1000,
+  'CREWTOPUS_LOOP_JOB_RETENTION_MS',
+  'AGENTHUB_LOOP_JOB_RETENTION_MS'
+);
 
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 

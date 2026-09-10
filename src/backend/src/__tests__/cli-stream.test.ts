@@ -89,7 +89,7 @@ describe('cli-stream', () => {
     handlers.onStdout?.('disk-spilled output');
     handlers.onStderr?.('disk-spilled warning');
 
-    const logPath = path.join(tmpDir, '.agenthub-work', '_streams', 'wi-persist.log');
+    const logPath = path.join(tmpDir, '.crewtopus-work', '_streams', 'wi-persist.log');
     expect(fs.existsSync(logPath)).toBe(true);
     expect(fs.readFileSync(logPath, 'utf-8')).toContain('[stdout] disk-spilled output');
     expect(fs.readFileSync(logPath, 'utf-8')).toContain('[stderr] disk-spilled warning');

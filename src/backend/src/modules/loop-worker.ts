@@ -1,5 +1,6 @@
 import { broadcast } from '../websocket';
 import { now } from '../utils/helpers';
+import { envNumber } from '../utils/env';
 import {
   claimNextPendingJob,
   completeLoopJob,
@@ -27,11 +28,11 @@ import {
 } from './story-lifecycle';
 import { continueFullLifecycleChain } from './full-lifecycle';
 
-const POLL_MS = Number(process.env.AGENTHUB_JOB_POLL_MS) || 500;
+const POLL_MS = envNumber(500, 'CREWTOPUS_JOB_POLL_MS', 'AGENTHUB_JOB_POLL_MS');
 
 /** Concurrent jobs in this process (1–4). One running job per work item is enforced at claim. */
 export function resolveJobConcurrency(): number {
-  const raw = Number(process.env.AGENTHUB_JOB_CONCURRENCY ?? process.env.CREWTOPUS_JOB_CONCURRENCY ?? 3);
+  const raw = envNumber(3, 'CREWTOPUS_JOB_CONCURRENCY', 'AGENTHUB_JOB_CONCURRENCY');
   if (!Number.isFinite(raw)) return 3;
   return Math.min(4, Math.max(1, Math.floor(raw)));
 }

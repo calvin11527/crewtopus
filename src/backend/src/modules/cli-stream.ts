@@ -4,6 +4,7 @@ import type { AgentType } from '../types';
 import { now } from '../utils/helpers';
 import { resolveWithinRoot, sanitizePathId } from '../utils/safe-path';
 import { broadcast } from '../websocket';
+import { envFlag, envNumber, envWorkDir } from '../utils/env';
 
 export interface SpawnCliOptions {
   onStdout?: (chunk: string) => void;
@@ -40,18 +41,23 @@ export interface CliOutputSnapshot {
 const FLUSH_MS = 50;
 const MAX_CHUNK = 2048;
 const MAX_RING_CHARS = 256_000;
-const MAX_STREAM_LOG_BYTES =
-  Number(process.env.AGENTHUB_CLI_STREAM_MAX_LOG_BYTES) || 512 * 1024;
-const MAX_RING_BUFFER_ENTRIES = Number(process.env.AGENTHUB_MAX_RING_BUFFERS) || 50;
+const MAX_STREAM_LOG_BYTES = envNumber(
+  512 * 1024,
+  'CREWTOPUS_CLI_STREAM_MAX_LOG_BYTES',
+  'AGENTHUB_CLI_STREAM_MAX_LOG_BYTES'
+);
+const MAX_RING_BUFFER_ENTRIES = envNumber(50, 'CREWTOPUS_MAX_RING_BUFFERS', 'AGENTHUB_MAX_RING_BUFFERS');
 
 const buffers = new Map<string, StreamBuffer>();
 const ringBuffers = new Map<string, { stdout: string; stderr: string; updatedAt: string }>();
 const streamLogBytes = new Map<string, number>();
 
 function resolveStreamLogDir(): string {
-  const workDir = process.env.AGENTHUB_WORK_DIR;
+  const workDir = envWorkDir();
   const base = workDir && fs.existsSync(workDir) ? workDir : process.cwd();
-  const dir = path.join(base, '.agenthub-work', '_streams');
+  const legacy = path.join(base, '.agenthub-work', '_streams');
+  const next = path.join(base, '.crewtopus-work', '_streams');
+  const dir = fs.existsSync(legacy) && !fs.existsSync(next) ? legacy : next;
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -95,7 +101,7 @@ function rotateStreamLog(workItemId: string): void {
 }
 
 function appendToStreamLog(workItemId: string, stream: 'stdout' | 'stderr', chunk: string): void {
-  if (process.env.AGENTHUB_CLI_STREAM_PERSIST === 'false') return;
+  if (envFlag('false', 'CREWTOPUS_CLI_STREAM_PERSIST', 'AGENTHUB_CLI_STREAM_PERSIST')) return;
 
   const payload = `[${stream}] ${chunk}`;
   const payloadBytes = Buffer.byteLength(payload, 'utf-8');

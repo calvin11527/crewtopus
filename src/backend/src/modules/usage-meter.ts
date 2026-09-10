@@ -10,6 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { envFlag } from '../utils/env';
 import { broadcast } from '../websocket';
 import { now } from '../utils/helpers';
 import type { AgentType } from '../types';
@@ -206,7 +207,7 @@ export function getUsageSyncMeta(): {
  */
 export function startProviderUsageWatcher(): void {
   if (watcherStarted) return;
-  if (process.env.AGENTHUB_WATCH_PROVIDER_USAGE !== 'true') return;
+  if (!envFlag('true', 'CREWTOPUS_WATCH_PROVIDER_USAGE', 'AGENTHUB_WATCH_PROVIDER_USAGE')) return;
   watcherStarted = true;
 
   const roots = [

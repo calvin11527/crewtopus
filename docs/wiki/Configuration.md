@@ -37,10 +37,6 @@ See [`.env.example`](https://github.com/calvin11527/crewtopus/blob/main/.env.exa
 
 ## Infrastructure
 
-```bash
-cd src
-npm run infra:up      # docker compose
-npm run infra:down
-```
+Supported: `./demo.sh` from the repo root.
 
-Details: [src/infra/README.md](https://github.com/calvin11527/crewtopus/blob/main/src/infra/README.md)
+Experimental full compose/k8s: [src/infra/EXPERIMENTAL.md](https://github.com/calvin11527/crewtopus/blob/main/src/infra/EXPERIMENTAL.md).

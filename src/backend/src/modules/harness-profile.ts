@@ -1,4 +1,5 @@
 import type { WorkItem, Workspace } from '../types';
+import { envFlag, envNumber } from '../utils/env';
 
 /** Retry policy for transient adapter failures. */
 export interface RetryPolicy {
@@ -66,8 +67,8 @@ export function resolveHarnessProfile(
     tokenBudget,
     maxSensitivity: DEFAULT_PROFILE.maxSensitivity,
     retryPolicy: { ...DEFAULT_RETRY_POLICY, maxAttempts },
-    auditSnapshots: DEFAULT_PROFILE.auditSnapshots,
-    cliMaxOutputBytes: DEFAULT_PROFILE.cliMaxOutputBytes,
+    auditSnapshots: !envFlag('false', 'CREWTOPUS_AUDIT_SNAPSHOTS', 'AGENTHUB_AUDIT_SNAPSHOTS'),
+    cliMaxOutputBytes: envNumber(10 * 1024 * 1024, 'CREWTOPUS_CLI_MAX_OUTPUT_BYTES', 'AGENTHUB_CLI_MAX_OUTPUT_BYTES'),
     allowedWriteRoots: DEFAULT_PROFILE.allowedWriteRoots,
     implementationPermission: implPerm ?? DEFAULT_PROFILE.implementationPermission,
     reviewPermission: reviewPerm ?? DEFAULT_PROFILE.reviewPermission,

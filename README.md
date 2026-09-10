@@ -141,12 +141,7 @@ No Grok, Copilot, Claude, or Ollama required — built-in **Mock Agent**.
 4. Add a **story** → **Full lifecycle** (BA → PM tasks → developer pipeline).  
 5. Watch **Live Activity** / work-item console.
 
-Optional infra (Redis, Ollama, Prometheus, Grafana):
-
-```bash
-cd src
-npm run infra:up
-```
+The supported Docker path is `./demo.sh` (API + UI). Redis/Ollama/Prometheus/Grafana/k8s are experimental — see `src/infra/EXPERIMENTAL.md`.
 
 ---
 
@@ -157,8 +152,8 @@ See **[.env.example](./.env.example)**.
 | Variable | Purpose |
 |----------|---------|
 | `PORT` | Backend HTTP port (default `3000`) |
-| `AGENTHUB_WORK_DIR` | Agent work artifacts *(legacy prefix; still used)* |
-| `AGENTHUB_DB_PATH` | SQLite path |
+| `CREWTOPUS_WORK_DIR` | Agent work artifacts (`AGENTHUB_WORK_DIR` still works) |
+| `CREWTOPUS_DB_PATH` | SQLite path (`AGENTHUB_DB_PATH` still works) |
 | `OLLAMA_HOST` | Local Ollama URL |
 | `GROK_*` / `COPILOT_*` | Adapter CLI paths, timeouts, permissions |
 

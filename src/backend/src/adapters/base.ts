@@ -10,6 +10,7 @@ import {
   registerCliProcess,
   deregisterCliProcess,
 } from '../modules/cli-process-registry';
+import { envNumber } from '../utils/env';
 
 export type { SpawnCliOptions };
 
@@ -39,8 +40,11 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 const TASK_BOUNDARY = '---AGENTHUB_TASK_BOUNDARY---';
 const INJECTION_PATTERN = /^##\s*Task\b/m;
 
-const DEFAULT_MAX_OUTPUT_BYTES =
-  Number(process.env.AGENTHUB_CLI_MAX_OUTPUT_BYTES) || 10 * 1024 * 1024;
+const DEFAULT_MAX_OUTPUT_BYTES = envNumber(
+  10 * 1024 * 1024,
+  'CREWTOPUS_CLI_MAX_OUTPUT_BYTES',
+  'AGENTHUB_CLI_MAX_OUTPUT_BYTES'
+);
 
 /** Lightweight token estimator (chars / 4). */
 export function estimateTokens(text: string): number {
