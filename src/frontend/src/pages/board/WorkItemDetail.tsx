@@ -29,10 +29,12 @@ import type {
   WorkItemActivity,
   WorkItemDeliverables,
   WorkItemLoopHistory,
+  WorkItemStatus,
   Workspace,
 } from '../../types';
 import {
   COLUMN_LABEL,
+  COLUMNS,
   LOOP_STATUS_LABEL,
   activityContent,
   activityEvalResults,
@@ -71,7 +73,7 @@ interface WorkItemDetailProps {
   onRunPipeline: (item: WorkItem) => void;
   onCancelLoop: (id: string) => void;
   onEdit: (item: WorkItem) => void;
-  onMove: (item: WorkItem) => void;
+  onMove: (item: WorkItem, toStatus: WorkItemStatus) => void;
   onDelete: (item: WorkItem) => void;
   rerunPending: boolean;
   lifecyclePending: boolean;
@@ -272,13 +274,23 @@ export default function WorkItemDetail({
               >
                 <Pencil size={14} /> Edit
               </button>
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                onClick={() => onMove(boardItem)}
-              >
-                <ArrowRightLeft size={14} /> Move
-              </button>
+              <label className="work-item-move">
+                <ArrowRightLeft size={14} />
+                <select
+                  className="input input--sm"
+                  value={boardItem.status}
+                  aria-label={`Move ${boardItem.key}`}
+                  onChange={(e) =>
+                    onMove(boardItem, e.target.value as WorkItemStatus)
+                  }
+                >
+                  {COLUMNS.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button
                 type="button"
                 className="btn btn--ghost btn--sm btn--danger"

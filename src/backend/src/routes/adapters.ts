@@ -1,11 +1,16 @@
 import { Router, Request, Response } from 'express';
-import { getAdapterAvailability } from '../adapters';
+import { getAdapterAvailability, listAdapterTypes } from '../adapters';
 import { buildContextScope } from '../modules/context-scope';
 import { executeOutboundPipeline, PrivacyBlockedError } from '../modules/outbound-pipeline';
 import { ApprovalRequiredError } from '../modules/approval-gate';
 import type { AgentType } from '../types';
 
 const router = Router();
+
+router.get('/', async (_req: Request, res: Response) => {
+  const availability = await getAdapterAvailability();
+  res.json({ types: listAdapterTypes(), availability });
+});
 
 router.get('/availability', async (_req: Request, res: Response) => {
   res.json(await getAdapterAvailability());

@@ -16,6 +16,16 @@ interface Gauge {
 const counters = new Map<string, Counter>();
 const gauges = new Map<string, Gauge>();
 
+function metricAliases(name: string): string[] {
+  if (name.startsWith('agenthub_')) {
+    return [name, `crewtopus_${name.slice('agenthub_'.length)}`];
+  }
+  if (name.startsWith('crewtopus_')) {
+    return [name, `agenthub_${name.slice('crewtopus_'.length)}`];
+  }
+  return [name];
+}
+
 function counterKey(name: string, labels: Record<string, string>): string {
   const sorted = Object.keys(labels)
     .sort()
@@ -31,18 +41,22 @@ export function incrementCounter(
   labels: Record<string, string> = {},
   amount = 1
 ): void {
-  const key = counterKey(name, labels);
-  const existing = counters.get(key);
-  if (existing) {
-    existing.value += amount;
-  } else {
-    counters.set(key, { name, help, value: amount, labels });
+  for (const alias of metricAliases(name)) {
+    const key = counterKey(alias, labels);
+    const existing = counters.get(key);
+    if (existing) {
+      existing.value += amount;
+    } else {
+      counters.set(key, { name: alias, help, value: amount, labels });
+    }
   }
 }
 
 /** Set a gauge value. */
 export function setGauge(name: string, help: string, value: number): void {
-  gauges.set(name, { name, help, value });
+  for (const alias of metricAliases(name)) {
+    gauges.set(alias, { name: alias, help, value });
+  }
 }
 
 function formatLabels(labels: Record<string, string>): string {

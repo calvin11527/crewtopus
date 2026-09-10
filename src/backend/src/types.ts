@@ -38,7 +38,24 @@ export interface Repository {
 
 /* ─── Agent Registry (Module B) ─── */
 
-export type AgentType = 'claude' | 'grok' | 'copilot' | 'antigravity' | 'ollama' | 'mock';
+/** Built-in adapter ids. Plugins may register additional string types. */
+export const BUILTIN_AGENT_TYPES = [
+  'claude',
+  'grok',
+  'copilot',
+  'antigravity',
+  'ollama',
+  'mock',
+] as const;
+
+export type BuiltinAgentType = (typeof BUILTIN_AGENT_TYPES)[number];
+
+/** Adapter id — builtins plus any type registered via `registerAdapter`. */
+export type AgentType = string;
+
+export function isAgentTypeSlug(value: string): boolean {
+  return /^[a-z][a-z0-9_-]{0,63}$/.test(value);
+}
 
 export type AgentStatus = 'idle' | 'running' | 'error' | 'disabled';
 

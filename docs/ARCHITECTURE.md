@@ -12,7 +12,7 @@ Backend (Express + SQLite)
     ├── Lifecycle (BA → PM → developer loop)
     ├── Usage meter + SuperGrok dashboard sync
     ├── Capability learning + suggestions
-    └── Optional Redis / Docker / k8s (infra/)
+    └── Optional Redis. Docker demo: ./demo.sh. k8s/Grafana: experimental.
 ```
 
 ## Key modules (`src/backend/src/modules/`)

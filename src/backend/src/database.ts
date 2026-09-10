@@ -1,13 +1,20 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { envString } from './utils/env';
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 
 let db: Database.Database | null = null;
 
 function getDbPath(): string {
-  return process.env.AGENTHUB_DB_PATH || path.join(DATA_DIR, 'agenthub.db');
+  const explicit = envString('CREWTOPUS_DB_PATH', 'AGENTHUB_DB_PATH');
+  if (explicit) return explicit;
+  const crewtopus = path.join(DATA_DIR, 'crewtopus.db');
+  const legacy = path.join(DATA_DIR, 'agenthub.db');
+  if (fs.existsSync(crewtopus)) return crewtopus;
+  if (fs.existsSync(legacy)) return legacy;
+  return crewtopus;
 }
 
 const MIGRATIONS: string[] = [

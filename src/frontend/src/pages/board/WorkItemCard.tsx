@@ -20,6 +20,7 @@ interface WorkItemCardProps {
   onEdit: (item: WorkItem) => void;
   onDelete: (item: WorkItem) => void;
   onMove: (item: WorkItem, toStatus: WorkItemStatus) => void;
+  dragging?: boolean;
 }
 
 export default function WorkItemCard({
@@ -36,6 +37,7 @@ export default function WorkItemCard({
   onEdit,
   onDelete,
   onMove,
+  dragging = false,
 }: WorkItemCardProps) {
   const cardBusy = isWorkItemBusy(item, cardHasJob);
   const busyTitle = cardBusy ? workItemBusyMessage(item, cardHasJob) : undefined;
@@ -45,7 +47,12 @@ export default function WorkItemCard({
   return (
     <div
       id={`card-${item.key}`}
-      className={`kanban-card${selected ? ' kanban-card--selected' : ''}${item.loopStatus === 'escalated' ? ' kanban-card--escalated' : ''}${item.loopStatus === 'running' ? ' kanban-card--loop-running' : ''}${cardBusy ? ' kanban-card--busy' : ''}`}
+      className={`kanban-card${selected ? ' kanban-card--selected' : ''}${item.loopStatus === 'escalated' ? ' kanban-card--escalated' : ''}${item.loopStatus === 'running' ? ' kanban-card--loop-running' : ''}${cardBusy ? ' kanban-card--busy' : ''}${dragging ? ' kanban-card--dragging' : ''}`}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', `crewtopus-item:${item.id}`);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
       onClick={() => onOpen(item)}
       onKeyDown={(e) => e.key === 'Enter' && onOpen(item)}
       role="button"
@@ -156,7 +163,7 @@ export default function WorkItemCard({
           className="input input--sm kanban-move-select"
           value={item.status}
           onChange={(e) => onMove(item, e.target.value as WorkItemStatus)}
-          aria-label={`Move ${item.key}`}
+          aria-label={`Move ${item.key} (or drag the card)`}
         >
           {COLUMNS.map((c) => (
             <option key={c.id} value={c.id}>

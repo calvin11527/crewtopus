@@ -24,14 +24,19 @@ const BOARD_COLUMNS: WorkItemStatus[] = ['backlog', 'todo', 'in_progress', 'in_r
 
 /**
  * Scratch/output root for agent work.
- * Prefer AGENTHUB_WORK_DIR / GROK_CWD; fall back to `<cwd>/.agenthub-work` so BA/PM/pipeline
- * can run without requiring env vars (empty-sprint bootstrap, local dev).
+ * Prefer CREWTOPUS_WORK_DIR / AGENTHUB_WORK_DIR / GROK_CWD; reuse an existing
+ * `.agenthub-work` folder, otherwise create `.crewtopus-work`.
  */
 export function resolveWorkDir(): string {
-  const dir =
-    process.env.AGENTHUB_WORK_DIR ||
-    process.env.GROK_CWD ||
-    path.join(process.cwd(), '.agenthub-work');
+  const fromEnv =
+    process.env.CREWTOPUS_WORK_DIR || process.env.AGENTHUB_WORK_DIR || process.env.GROK_CWD;
+  if (fromEnv) {
+    fs.mkdirSync(fromEnv, { recursive: true });
+    return fromEnv;
+  }
+  const crewtopus = path.join(process.cwd(), '.crewtopus-work');
+  const legacy = path.join(process.cwd(), '.agenthub-work');
+  const dir = fs.existsSync(legacy) && !fs.existsSync(crewtopus) ? legacy : crewtopus;
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }

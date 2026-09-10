@@ -66,7 +66,7 @@ describe('updateAgent type switch', () => {
     const any = agents[0];
     expect(any).toBeDefined();
     expect(() =>
-      updateAgent(any.id, { type: 'not-a-type' as 'grok' })
-    ).toThrow(/type must be one of/);
+      updateAgent(any.id, { type: 'not-a-type' })
+    ).toThrow(/No adapter registered/);
   });
 });

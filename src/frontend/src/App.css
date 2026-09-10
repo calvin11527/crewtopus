@@ -2971,6 +2971,33 @@ body {
   min-width: 220px;
 }
 
+.kanban-column--drop-target {
+  border-color: var(--accent-blue);
+  box-shadow: inset 0 0 0 1px var(--accent-blue);
+}
+
+.kanban-card--dragging {
+  opacity: 0.55;
+}
+
+.board-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.board-search-input {
+  min-width: 160px;
+  max-width: 240px;
+}
+
+.work-item-move {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .kanban-column-header {
   display: flex;
   align-items: center;

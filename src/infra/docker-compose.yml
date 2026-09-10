@@ -1,5 +1,8 @@
 ###############################################################################
-# AgentHub – Docker Compose (full stack)
+# EXPERIMENTAL — not the supported product path.
+# Full stack (Redis, Ollama, Prometheus, Grafana) does not match local SQLite
+# Crewtopus. Use ./demo.sh from the repo root.
+# Opt-in: CREWTOPUS_EXPERIMENTAL_INFRA=1 ./scripts/setup.sh compose
 ###############################################################################
 
 x-common: &common

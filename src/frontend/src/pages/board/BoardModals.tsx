@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 import { AGENT_ROLE_LABELS, STAFF_ROLES } from '../../constants/agent-roles';
 import Modal from '../../components/Modal';
-import type { AgentRole, RosterAgent, Sprint, SprintTeamView, WorkItem, WorkItemStatus } from '../../types';
-import { COLUMN_LABEL, COLUMNS } from './constants';
+import type { AgentRole, RosterAgent, Sprint, SprintTeamView, WorkItem } from '../../types';
 
 interface BoardModalsProps {
   staffOpen: boolean;
@@ -23,11 +22,6 @@ interface BoardModalsProps {
   onCloseDelete: () => void;
   onConfirmDelete: () => void;
   deletePending: boolean;
-  moveTarget: { item: WorkItem; toStatus: WorkItemStatus } | null;
-  onCloseMove: () => void;
-  onMoveStatusChange: (status: WorkItemStatus) => void;
-  onConfirmMove: () => void;
-  movePending: boolean;
   sprintCreateOpen: boolean;
   onCloseSprintCreate: () => void;
   sprintEditOpen: boolean;
@@ -60,11 +54,6 @@ export default function BoardModals(props: BoardModalsProps) {
     onCloseDelete,
     onConfirmDelete,
     deletePending,
-    moveTarget,
-    onCloseMove,
-    onMoveStatusChange,
-    onConfirmMove,
-    movePending,
     sprintCreateOpen,
     onCloseSprintCreate,
     sprintEditOpen,
@@ -156,51 +145,6 @@ export default function BoardModals(props: BoardModalsProps) {
                 disabled={deletePending}
               >
                 Delete
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      <Modal id="modal-move-work-item" open={!!moveTarget} onClose={onCloseMove} title="Move work item">
-        {moveTarget && (
-          <div className="form-stack">
-            <p>
-              Move <strong>{moveTarget.item.key}</strong> from{' '}
-              <strong>{COLUMN_LABEL[moveTarget.item.status]}</strong> to:
-            </p>
-            <label>
-              Destination column
-              <select
-                className="input"
-                value={moveTarget.toStatus}
-                onChange={(e) => onMoveStatusChange(e.target.value as WorkItemStatus)}
-              >
-                {COLUMNS.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {moveTarget.item.status === moveTarget.toStatus ? (
-              <p className="text-muted">Select a different column to move this item.</p>
-            ) : (
-              <p className="move-confirm-text">
-                Confirm moving to <strong>{COLUMN_LABEL[moveTarget.toStatus]}</strong>?
-              </p>
-            )}
-            <div className="modal-actions">
-              <button type="button" className="btn btn--ghost" onClick={onCloseMove}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn--primary"
-                onClick={onConfirmMove}
-                disabled={moveTarget.item.status === moveTarget.toStatus || movePending}
-              >
-                Confirm move
               </button>
             </div>
           </div>

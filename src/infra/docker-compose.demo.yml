@@ -32,8 +32,11 @@ services:
       - PORT=3000
       - NODE_ENV=production
       # Fresh volume → seedDemoWorkItems + Mock Agent on first boot
-      - AGENTHUB_DB_PATH=/app/data/agenthub.db
+      - CREWTOPUS_DB_PATH=/app/data/crewtopus.db
+      - CREWTOPUS_WORK_DIR=/app/data/work
+      - AGENTHUB_DB_PATH=/app/data/crewtopus.db
       - AGENTHUB_WORK_DIR=/app/data/work
+      - HOST=0.0.0.0
     volumes:
       - crewtopus-demo-data:/app/data
     healthcheck:

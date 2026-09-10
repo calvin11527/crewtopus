@@ -1,15 +1,9 @@
 import type { AgentType } from '../types';
+import { BUILTIN_AGENT_TYPES } from '../types';
 
-export const AGENT_TYPES: AgentType[] = [
-  'grok',
-  'copilot',
-  'claude',
-  'ollama',
-  'antigravity',
-  'mock',
-];
+export const AGENT_TYPES: AgentType[] = [...BUILTIN_AGENT_TYPES];
 
-export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
+export const AGENT_TYPE_LABELS: Record<string, string> = {
   grok: 'Grok',
   copilot: 'Copilot',
   claude: 'Claude',
@@ -18,7 +12,7 @@ export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   mock: 'Mock',
 };
 
-export const AGENT_TYPE_COLORS: Record<AgentType, string> = {
+export const AGENT_TYPE_COLORS: Record<string, string> = {
   claude: '#d97706',
   grok: '#ef4444',
   copilot: '#4f8fff',
@@ -28,5 +22,5 @@ export const AGENT_TYPE_COLORS: Record<AgentType, string> = {
 };
 
 export function formatAgentType(type: AgentType | string): string {
-  return AGENT_TYPE_LABELS[type as AgentType] ?? type;
+  return AGENT_TYPE_LABELS[type] ?? type;
 }

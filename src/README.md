@@ -9,17 +9,16 @@ Crewtopus orchestrates multiple AI coding agents (Claude Code, Grok, Copilot, An
 ### Prerequisites
 
 - Node.js >= 20
-- Docker Desktop (for Redis, Ollama, Prometheus, Grafana)
-- At least one AI CLI tool installed (claude, grok, copilot, antigravity, or ollama)
+- Optional: Docker Desktop for `./demo.sh`
+- Optional: an AI CLI (claude, grok, copilot, antigravity, or ollama). The mock adapter needs none.
 
-### 1. Start Infrastructure
+### 1. Run the supported demo (optional)
 
 ```bash
-cd src
-npm run infra:up
+./demo.sh
 ```
 
-This starts Redis, Ollama, Prometheus, and Grafana via Docker Compose.
+From `src/`, `npm run docker:up` is the same lean API+UI stack — not Redis/Grafana/k8s.
 
 ### 2. Install Dependencies
 

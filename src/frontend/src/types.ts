@@ -8,7 +8,19 @@ export interface ContextScope {
   sensitivityLevel: number;
 }
 
-export type AgentType = 'claude' | 'grok' | 'copilot' | 'antigravity' | 'ollama' | 'mock';
+export const BUILTIN_AGENT_TYPES = [
+  'claude',
+  'grok',
+  'copilot',
+  'antigravity',
+  'ollama',
+  'mock',
+] as const;
+
+export type BuiltinAgentType = (typeof BUILTIN_AGENT_TYPES)[number];
+
+/** Adapter id — builtins plus any plugin type the backend has registered. */
+export type AgentType = string;
 export type AgentStatus = 'idle' | 'running' | 'error' | 'disabled';
 export type WorkflowStatus = 'draft' | 'active' | 'paused' | 'completed' | 'failed' | 'cancelled';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'modified';

@@ -13,6 +13,15 @@
 ###############################################################################
 set -euo pipefail
 
+if [[ "${CREWTOPUS_EXPERIMENTAL_INFRA:-}" != "1" ]]; then
+  echo "Full Docker Compose (Redis/Ollama/Prometheus/Grafana) and k8s are experimental." >&2
+  echo "They do not match the supported product: SQLite on localhost." >&2
+  echo "Use ./demo.sh from the repo root (API + UI, mock agents)." >&2
+  echo "Override only if you know you need the old stack:" >&2
+  echo "  CREWTOPUS_EXPERIMENTAL_INFRA=1 $0 $*" >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA_DIR="$(dirname "$SCRIPT_DIR")"
 SRC_DIR="$(dirname "$INFRA_DIR")"

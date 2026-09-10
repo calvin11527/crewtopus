@@ -3,6 +3,7 @@ import type { Agent, AgentType, AgentStatus } from '../types';
 import { generateId, now, parseJson } from '../utils/helpers';
 import { mergeSafeConfig } from '../utils/safe-path';
 import { broadcast } from '../websocket';
+import { hasAdapter, listAdapterTypes } from '../adapters';
 
 interface AgentRow {
   id: string;
@@ -62,6 +63,7 @@ export function registerAgent(
   const db = getDatabase();
   const existing = db.prepare('SELECT id FROM agent WHERE name = ?').get(name);
   if (existing) throw new Error(`Agent "${name}" already registered`);
+  assertRegisteredAdapterType(type);
 
   const id = generateId();
   const timestamp = now();
@@ -153,14 +155,13 @@ export function updateAgentConfig(
   return { ...agent, config: merged };
 }
 
-const VALID_AGENT_TYPES: AgentType[] = [
-  'claude',
-  'grok',
-  'copilot',
-  'antigravity',
-  'ollama',
-  'mock',
-];
+function assertRegisteredAdapterType(type: AgentType): void {
+  if (!hasAdapter(type)) {
+    throw new Error(
+      `No adapter registered for type "${type}". Known: ${listAdapterTypes().join(', ')}`
+    );
+  }
+}
 
 /** Provider calibration keys that do not transfer when switching adapter type. */
 const PROVIDER_CALIBRATION_KEYS = [
@@ -186,8 +187,8 @@ export function updateAgent(id: string, updates: UpdateAgentInput): Agent | null
   const agent = getAgent(id);
   if (!agent) return null;
 
-  if (updates.type !== undefined && !VALID_AGENT_TYPES.includes(updates.type)) {
-    throw new Error(`type must be one of: ${VALID_AGENT_TYPES.join(', ')}`);
+  if (updates.type !== undefined) {
+    assertRegisteredAdapterType(updates.type);
   }
 
   const nextName = updates.name !== undefined ? updates.name.trim() : agent.name;

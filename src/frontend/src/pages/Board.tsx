@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Columns3,
@@ -10,6 +10,7 @@ import {
   Users,
   Clock,
   AlertCircle,
+  Search,
 } from 'lucide-react';
 import {
   useBoard,
@@ -41,6 +42,7 @@ import {
   useSetSprintTeam,
   useSprintAutomation,
   useSetSprintAutomation,
+  useAdapterCatalog,
   type PipelineStepResult,
   queryKeys,
 } from '../api/hooks';
@@ -91,6 +93,7 @@ import {
   type SprintFormState,
 } from './board/constants';
 import { buildBoardSearchParams, parseBoardSearchParams } from './board/board-url';
+import { filterWorkItems } from './board/board-filter';
 import BoardModals from './board/BoardModals';
 import WorkItemCard from './board/WorkItemCard';
 import WorkItemDetail, { type PipelineResultState } from './board/WorkItemDetail';
@@ -186,7 +189,8 @@ export default function Board() {
   const [editItem, setEditItem] = useState<WorkItem | null>(null);
   const [form, setForm] = useState<ItemFormState>(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState<WorkItem | null>(null);
-  const [moveTarget, setMoveTarget] = useState<{ item: WorkItem; toStatus: WorkItemStatus } | null>(null);
+  const [boardQuery, setBoardQuery] = useState('');
+  const [dropStatus, setDropStatus] = useState<WorkItemStatus | null>(null);
   const [sprintCreateOpen, setSprintCreateOpen] = useState(false);
   const [sprintEditOpen, setSprintEditOpen] = useState(false);
   const [sprintDeleteOpen, setSprintDeleteOpen] = useState(false);
@@ -427,16 +431,32 @@ export default function Board() {
     setDeleteTarget(null);
   };
 
-  const requestMove = (item: WorkItem, toStatus: WorkItemStatus) => {
+  const applyMove = async (item: WorkItem, toStatus: WorkItemStatus) => {
     if (item.status === toStatus) return;
-    setMoveTarget({ item, toStatus });
+    const updated = await updateItem.mutateAsync({ id: item.id, status: toStatus });
+    if (selected?.id === item.id) setSelected(updated);
   };
 
-  const confirmMove = async () => {
-    if (!moveTarget) return;
-    const updated = await updateItem.mutateAsync({ id: moveTarget.item.id, status: moveTarget.toStatus });
-    if (selected?.id === moveTarget.item.id) setSelected(updated);
-    setMoveTarget(null);
+  const { data: adapterCatalog } = useAdapterCatalog();
+  const agentOptions = adapterCatalog?.types?.length ? adapterCatalog.types : AGENTS;
+
+  const parseDropItemId = (raw: string): string | null => {
+    if (raw.startsWith('crewtopus-item:')) return raw.slice('crewtopus-item:'.length);
+    return raw.trim() || null;
+  };
+
+  const handleColumnDrop = (toStatus: WorkItemStatus, event: DragEvent) => {
+    event.preventDefault();
+    setDropStatus(null);
+    const id = parseDropItemId(event.dataTransfer.getData('text/plain'));
+    if (!id || !board) return;
+    for (const col of COLUMNS) {
+      const found = board.columns[col.id]?.find((row) => row.id === id);
+      if (found) {
+        void applyMove(found, toStatus);
+        return;
+      }
+    }
   };
 
   const handleRunAgent = async (item: WorkItem) => {
@@ -992,7 +1012,7 @@ export default function Board() {
           value={form.agent}
           onChange={(e) => setForm((f) => ({ ...f, agent: e.target.value as AgentType }))}
         >
-          {AGENTS.map((a) => (
+          {agentOptions.map((a) => (
             <option key={a} value={a}>
               {a}
             </option>
@@ -1142,6 +1162,18 @@ export default function Board() {
                 </option>
               ))}
             </select>
+            <label className="board-search">
+              <Search size={14} aria-hidden />
+              <input
+                id="board-search"
+                className="input board-search-input"
+                type="search"
+                value={boardQuery}
+                onChange={(e) => setBoardQuery(e.target.value)}
+                placeholder="Search cards…"
+                aria-label="Search work items"
+              />
+            </label>
             <div className="board-action-group" role="group" aria-label="Sprint CRUD">
               <button
                 id="btn-create-sprint"
@@ -1444,15 +1476,31 @@ export default function Board() {
             />
           ) : (
             <div className="kanban-board">
-              {COLUMNS.map((col) => (
-                <div key={col.id} id={`column-${col.id}`} className="kanban-column">
+              {COLUMNS.map((col) => {
+                const columnItems = filterWorkItems(board?.columns[col.id], boardQuery);
+                return (
+                <div
+                  key={col.id}
+                  id={`column-${col.id}`}
+                  className={`kanban-column${dropStatus === col.id ? ' kanban-column--drop-target' : ''}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    setDropStatus(col.id);
+                  }}
+                  onDragLeave={(e) => {
+                    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                    setDropStatus((current) => (current === col.id ? null : current));
+                  }}
+                  onDrop={(e) => handleColumnDrop(col.id, e)}
+                >
                   <div className="kanban-column-header">
                     <Columns3 size={14} />
                     <span>{col.label}</span>
-                    <span className="kanban-count">{board?.columns[col.id]?.length ?? 0}</span>
+                    <span className="kanban-count">{columnItems.length}</span>
                   </div>
                   <div className="kanban-cards">
-                    {board?.columns[col.id]?.map((item) => (
+                    {columnItems.map((item) => (
                       <WorkItemCard
                         key={item.id}
                         item={item}
@@ -1467,12 +1515,13 @@ export default function Board() {
                         onRunLifecycle={(next) => void handleRunLifecycle(next)}
                         onEdit={openEdit}
                         onDelete={setDeleteTarget}
-                        onMove={requestMove}
+                        onMove={(next, status) => void applyMove(next, status)}
                       />
                     ))}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1492,7 +1541,7 @@ export default function Board() {
             onRunPipeline={(next) => void handleRunPipeline(next)}
             onCancelLoop={(id) => cancelLoop.mutate(id)}
             onEdit={openEdit}
-            onMove={(next) => setMoveTarget({ item: next, toStatus: next.status })}
+            onMove={(next, status) => void applyMove(next, status)}
             onDelete={setDeleteTarget}
             rerunPending={rerunReview.isPending}
             lifecyclePending={runLifecycle.isPending}
@@ -1540,13 +1589,6 @@ export default function Board() {
         onCloseDelete={() => setDeleteTarget(null)}
         onConfirmDelete={() => void handleDelete()}
         deletePending={deleteItem.isPending}
-        moveTarget={moveTarget}
-        onCloseMove={() => setMoveTarget(null)}
-        onMoveStatusChange={(status) =>
-          setMoveTarget((m) => (m ? { ...m, toStatus: status } : m))
-        }
-        onConfirmMove={() => void confirmMove()}
-        movePending={updateItem.isPending}
         sprintCreateOpen={sprintCreateOpen}
         onCloseSprintCreate={() => setSprintCreateOpen(false)}
         sprintEditOpen={sprintEditOpen}

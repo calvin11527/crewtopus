@@ -438,7 +438,7 @@ export async function executeOutboundPipeline(request: OutboundRequest): Promise
 
 /** Estimate cost in USD based on agent type and token count. */
 function estimateCost(agentType: AgentType, tokenCount: number): number {
-  const rates: Record<AgentType, number> = {
+  const rates: Record<string, number> = {
     claude: 0.000015,
     grok: 0.00001,
     copilot: 0.00001,

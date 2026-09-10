@@ -165,6 +165,14 @@ export function useAgents() {
   return useQuery<Agent[]>({ queryKey: queryKeys.agents, queryFn: () => api.get('/agents'), refetchInterval: 15_000 });
 }
 
+export function useAdapterCatalog() {
+  return useQuery<{ types: AgentType[]; availability: Record<string, boolean> }>({
+    queryKey: ['adapters'] as const,
+    queryFn: () => api.get('/adapters'),
+    staleTime: 60_000,
+  });
+}
+
 export function useAgentCredits() {
   return useQuery<AgentCreditUsage[]>({
     queryKey: queryKeys.agentCredits,
