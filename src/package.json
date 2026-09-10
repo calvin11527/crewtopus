@@ -1,6 +1,6 @@
 {
   "name": "crewtopus",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Crewtopus — many AI arms, one sprint crew. Local multi-agent orchestration.",
   "license": "MIT",
   "private": true,
@@ -66,7 +66,7 @@
   },
   "overrides": {
     "shell-quote": "1.9.0",
-    "js-yaml": "4.3.1",
+    "js-yaml": "4.3.2",
     "dompurify": "3.4.14",
     "uuid": "11.1.1",
     "esbuild": "0.28.2",
