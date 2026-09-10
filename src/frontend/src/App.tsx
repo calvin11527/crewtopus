@@ -14,6 +14,7 @@ import { wsClient } from './api/client';
 import { useAppStore } from './stores/useAppStore';
 import { useCliPreviewStore } from './stores/useCliPreviewStore';
 import { queryKeys } from './api/hooks';
+import { applyWorkItemSocketMessage } from './api/ws-board-cache';
 import OnboardingWizard from './components/OnboardingWizard';
 import CommandPalette from './components/CommandPalette';
 
@@ -76,11 +77,15 @@ export default function App() {
         msg.type === 'work_item:activity' ||
         msg.type === 'work_item:pipeline_step' ||
         msg.type === 'work_item:loop_update' ||
-        msg.type === 'loop:job' ||
-        msg.type === 'shift:update' ||
-        msg.type === 'sprint_automation:status' ||
-        msg.type === 'story_queue:progress'
+        msg.type === 'loop:job'
       ) {
+        const patched = applyWorkItemSocketMessage(qc, msg);
+        if (!patched) {
+          qc.invalidateQueries({ queryKey: ['work-items'] });
+        }
+      }
+
+      if (msg.type === 'shift:update' || msg.type === 'sprint_automation:status' || msg.type === 'story_queue:progress') {
         qc.invalidateQueries({ queryKey: ['work-items'] });
         const sprintId =
           msg.payload && typeof msg.payload === 'object' && 'sprintId' in msg.payload
@@ -92,15 +97,6 @@ export default function App() {
         }
         if (msg.type === 'shift:update' || msg.type === 'sprint_automation:status') {
           qc.invalidateQueries({ queryKey: ['agents', 'roster'] });
-        }
-        const workItemId =
-          msg.payload && typeof msg.payload === 'object' && 'workItemId' in msg.payload
-            ? String((msg.payload as { workItemId: string }).workItemId)
-            : null;
-        if (workItemId) {
-          qc.invalidateQueries({ queryKey: queryKeys.workItemActivity(workItemId) });
-          qc.invalidateQueries({ queryKey: queryKeys.workItemLoop(workItemId) });
-          qc.invalidateQueries({ queryKey: queryKeys.workItemDeliverables(workItemId) });
         }
       }
     });

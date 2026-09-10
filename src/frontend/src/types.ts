@@ -246,7 +246,13 @@ export interface WorkflowStep {
 export type WorkflowLoopUntil = 'verdict_approved' | 'step_output_match' | 'eval_pass';
 export type WorkflowLoopOnExhausted = 'escalate' | 'fail' | 'human_approval';
 
-export type LoopEvalType = 'verdict_parse' | 'acceptance_criteria' | 'test_command' | 'file_exists' | 'custom';
+export type LoopEvalType =
+  | 'verdict_parse'
+  | 'acceptance_criteria'
+  | 'test_command'
+  | 'file_exists'
+  | 'git_diff'
+  | 'custom';
 
 export interface LoopEval {
   id: string;
@@ -332,11 +338,14 @@ export interface AuditStats {
 export interface ApprovalRequest {
   id: string;
   workflowId?: string;
+  workItemId?: string;
   contextScope: ContextScope;
+  contextHash?: string;
   sensitivityLevel: number;
   status: ApprovalStatus;
   createdAt: string;
   resolvedAt?: string;
+  consumedAt?: string;
 }
 
 export interface PrivacyPolicy {

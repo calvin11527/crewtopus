@@ -3,6 +3,7 @@ import { getAdapter } from '../adapters';
 import {
   executeOutboundPipeline,
   PrivacyBlockedError,
+  AgentUnavailableError,
 } from '../modules/outbound-pipeline';
 import { listAuditEntries } from '../modules/audit-logger';
 
@@ -75,7 +76,24 @@ describe('Outbound Pipeline Integration', () => {
     ).rejects.toBeInstanceOf(PrivacyBlockedError);
   });
 
-  it('should fall back to mock adapter when external CLI is unavailable', async () => {
+  it('fails closed when the real adapter is unavailable', async () => {
+    const scope = makeScope({
+      files: ['// safe.ts\nexport const ok = true;'],
+    });
+
+    jest.spyOn(getAdapter('claude'), 'isAvailable').mockResolvedValue(false);
+
+    await expect(
+      executeOutboundPipeline({
+        agentType: 'claude',
+        prompt: 'Summarize the module',
+        contextScope: scope,
+        capability: 'analysis',
+      })
+    ).rejects.toBeInstanceOf(AgentUnavailableError);
+  });
+
+  it('falls back to mock only when demo flag is set', async () => {
     const scope = makeScope({
       files: ['// safe.ts\nexport const ok = true;'],
     });
@@ -87,9 +105,11 @@ describe('Outbound Pipeline Integration', () => {
       prompt: 'Summarize the module',
       contextScope: scope,
       capability: 'analysis',
+      demo: true,
     });
 
     expect(result.agentType).toBe('mock');
+    expect(result.degraded).toBe(true);
     expect(result.content).toContain('## Analysis');
   });
 });

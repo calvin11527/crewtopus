@@ -149,7 +149,7 @@ describe('Harness Engineering (AH-40)', () => {
     expect(entry.responseMetadata?.contextHashFull).toBeTruthy();
   });
 
-  it('emits agent:fallback when mock substitutes unavailable agent', async () => {
+  it('emits agent:fallback when demo allows mock to substitute an unavailable agent', async () => {
     jest.spyOn(getAdapter('claude'), 'isAvailable').mockResolvedValue(false);
 
     const scope = makeScope({ files: ['// ok.ts\nconst v = 1'] });
@@ -158,6 +158,7 @@ describe('Harness Engineering (AH-40)', () => {
       prompt: 'Analyze',
       contextScope: scope,
       capability: 'analysis',
+      demo: true,
     });
 
     expect(result.agentType).toBe('mock');

@@ -289,6 +289,7 @@ export function initDatabase(): Database.Database {
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+  db.pragma('busy_timeout = 5000');
 
   const migrate = db.transaction(() => {
     for (const sql of MIGRATIONS) {
@@ -534,6 +535,22 @@ export function initDatabase(): Database.Database {
         'CREATE INDEX IF NOT EXISTS idx_improvement_status ON agent_improvement_suggestion(status)'
       );
       db!.prepare('UPDATE schema_version SET version = ?').run(10);
+      version = 10;
+    }
+
+    if (version < 11) {
+      const approvalCols = db!.prepare('PRAGMA table_info(approval_request)').all() as { name: string }[];
+      const approvalNames = new Set(approvalCols.map((c) => c.name));
+      if (!approvalNames.has('context_hash')) {
+        db!.exec('ALTER TABLE approval_request ADD COLUMN context_hash TEXT');
+      }
+      if (!approvalNames.has('consumed_at')) {
+        db!.exec('ALTER TABLE approval_request ADD COLUMN consumed_at TEXT');
+      }
+      db!.exec(
+        'CREATE INDEX IF NOT EXISTS idx_approval_consumed ON approval_request(status, consumed_at)'
+      );
+      db!.prepare('UPDATE schema_version SET version = ?').run(11);
     }
   });
 

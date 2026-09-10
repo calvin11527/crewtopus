@@ -146,7 +146,7 @@ server.listen(PORT, HOST, () => {
 async function shutdown(): Promise<void> {
   console.log('[AgentHub] Shutting down...');
   clearInterval(learningTimer);
-  stopLoopWorker();
+  await stopLoopWorker();
   stopShiftScheduler();
   stopResourceCleanup();
   proactiveEngine.shutdown();

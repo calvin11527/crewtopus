@@ -228,7 +228,16 @@ function nextWorkItemKey(): string {
 function notifyWorkItem(item: WorkItem): void {
   broadcast({
     type: 'work_item:update',
-    payload: { id: item.id, key: item.key, status: item.status, title: item.title },
+    payload: {
+      item,
+      id: item.id,
+      key: item.key,
+      status: item.status,
+      title: item.title,
+      sprintId: item.sprintId,
+      loopStatus: item.loopStatus,
+      loopIteration: item.loopIteration,
+    },
     timestamp: now(),
   });
 }
@@ -671,7 +680,7 @@ export async function runWorkItemAgent(id: string): Promise<{
       auditId: pipeline.auditId,
       metadata: {
         tokenCount: pipeline.tokenCount,
-        content: resultContent,
+        contentLength: resultContent.length,
         agentType: pipeline.agentType,
         requestedAgentType: pipeline.requestedAgentType,
         fallbackFrom: pipeline.fallbackFrom,

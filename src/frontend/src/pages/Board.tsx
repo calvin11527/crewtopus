@@ -3,21 +3,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Columns3,
   Plus,
-  Play,
-  Bot,
   FileText,
   Pencil,
   Trash2,
-  ArrowRightLeft,
   GitBranch,
-  GripVertical,
-  Layers,
-  PanelRightClose,
-  PanelRightOpen,
-  Square,
   Users,
   Clock,
-  Lock,
   AlertCircle,
 } from 'lucide-react';
 import {
@@ -55,7 +46,6 @@ import {
 } from '../api/hooks';
 import type {
   WorkItem,
-  WorkItemActivity,
   WorkItemStatus,
   WorkItemType,
   AgentType,
@@ -65,11 +55,6 @@ import type {
   Sprint,
   SprintStatus,
 } from '../types';
-import StatusBadge from '../components/StatusBadge';
-import Modal from '../components/Modal';
-import AgentConsole from '../components/AgentConsole';
-import WorkItemAgentHistory from '../components/WorkItemAgentHistory';
-import KanbanCliPreview from '../components/KanbanCliPreview';
 import SprintTeamPanel from '../components/SprintTeamPanel';
 import LiveFeed from '../components/LiveFeed';
 import BoardEmptyState from '../components/BoardEmptyState';
@@ -77,167 +62,43 @@ import { useWorkItemAgentConsole } from '../hooks/useWorkItemAgentConsole';
 import { useDragResize } from '../hooks/useDragResize';
 import { useCliPreviewStore } from '../stores/useCliPreviewStore';
 import { useAppStore } from '../stores/useAppStore';
-import { AGENT_ROLE_LABELS, STAFF_ROLES, emptyStaffDraft } from '../constants/agent-roles';
+import { useSearchParams } from 'react-router';
+import { STAFF_ROLES, emptyStaffDraft } from '../constants/agent-roles';
 import {
   automationPauseHint,
   automationPauseLabel,
 } from '../constants/sprint-automation';
 import { isWorkItemBusy, workItemBusyMessage } from '../utils/work-item-busy';
-import { workItemLifecycleChip } from '../utils/work-item-agent-history';
 import {
-  displayWorkItemTitle,
-  isOversizedTitle,
-  titleOverflowBody,
-} from '../utils/work-item-display';
-
-const DETAIL_WIDTH_KEY = 'agenthub.board.detailWidth';
-const CONSOLE_HEIGHT_KEY = 'agenthub.board.consoleHeight';
-/** Persisted board sprint selection: sprint id, `__all__` = All items, absent = auto active sprint. */
-const SPRINT_SELECTION_KEY = 'agenthub.board.selectedSprint';
-const SPRINT_SELECTION_ALL = '__all__';
-const DEFAULT_DETAIL_WIDTH = 460;
-const DEFAULT_CONSOLE_HEIGHT = 240;
-
-function readStoredNumber(key: string, fallback: number): number {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw == null) return fallback;
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function storeNumber(key: string, value: number): void {
-  try {
-    localStorage.setItem(key, String(value));
-  } catch {
-    /* ignore */
-  }
-}
-
-/** `undefined` = auto active sprint; `null` = All items; string = sprint id. */
-function readStoredSprintSelection(): string | null | undefined {
-  try {
-    const raw = localStorage.getItem(SPRINT_SELECTION_KEY);
-    if (raw == null) return undefined;
-    if (raw === '' || raw === SPRINT_SELECTION_ALL) return null;
-    return raw;
-  } catch {
-    return undefined;
-  }
-}
-
-function storeSprintSelection(value: string | null | undefined): void {
-  try {
-    if (value === undefined) {
-      localStorage.removeItem(SPRINT_SELECTION_KEY);
-    } else if (value === null) {
-      localStorage.setItem(SPRINT_SELECTION_KEY, SPRINT_SELECTION_ALL);
-    } else {
-      localStorage.setItem(SPRINT_SELECTION_KEY, value);
-    }
-  } catch {
-    /* ignore */
-  }
-}
-
-const COLUMNS: { id: WorkItemStatus; label: string }[] = [
-  { id: 'backlog', label: 'Backlog' },
-  { id: 'todo', label: 'To Do' },
-  { id: 'in_progress', label: 'In Progress' },
-  { id: 'in_review', label: 'In Review' },
-  { id: 'done', label: 'Done' },
-];
-
-const COLUMN_LABEL: Record<WorkItemStatus, string> = Object.fromEntries(
-  COLUMNS.map((c) => [c.id, c.label])
-) as Record<WorkItemStatus, string>;
-
-const TYPES: WorkItemType[] = ['epic', 'story', 'task', 'bug'];
-const AGENTS: AgentType[] = ['mock', 'claude', 'grok', 'copilot', 'antigravity', 'ollama'];
-const SPRINT_STATUSES: SprintStatus[] = ['planning', 'active', 'completed'];
-
-interface SprintFormState {
-  name: string;
-  goal: string;
-  status: SprintStatus;
-}
-
-const emptySprintForm = (): SprintFormState => ({
-  name: '',
-  goal: '',
-  status: 'planning',
-});
-
-const TYPE_COLORS: Record<WorkItemType, string> = {
-  epic: 'var(--accent-purple)',
-  story: 'var(--accent-blue)',
-  task: 'var(--accent-green)',
-  bug: 'var(--accent-red)',
-};
-
-function activityContent(activity: WorkItemActivity): string | undefined {
-  const content = activity.metadata?.content;
-  return typeof content === 'string' && content.trim() ? content : undefined;
-}
-
-function activityWorkDir(activity: WorkItemActivity): string | undefined {
-  const workDir = activity.metadata?.workDir;
-  return typeof workDir === 'string' && workDir.trim() ? workDir : undefined;
-}
-
-function activityLoopIteration(activity: WorkItemActivity): number | undefined {
-  const iter = activity.metadata?.loopIteration;
-  return typeof iter === 'number' ? iter : undefined;
-}
-
-function activityEvalResults(activity: WorkItemActivity): EvalResult[] | undefined {
-  const raw = activity.metadata?.evalResults;
-  if (!Array.isArray(raw)) return undefined;
-  return raw as EvalResult[];
-}
-
-function loopBadgeLabel(item: WorkItem): string | null {
-  if (item.loopStatus === 'running') {
-    return `${item.loopIteration}/${item.maxLoopIterations}`;
-  }
-  if (item.loopStatus === 'escalated') return 'needs review';
-  if (item.loopIteration > 0 && item.loopStatus === 'approved') {
-    return `✓ ${item.loopIteration} iter`;
-  }
-  return null;
-}
-
-const LOOP_STATUS_LABEL: Record<LoopStatus, string> = {
-  idle: 'Idle',
-  running: 'Running',
-  approved: 'Approved',
-  escalated: 'Escalated — needs human review',
-  failed: 'Failed',
-  cancelled: 'Cancelled',
-  awaiting_shift: 'Awaiting next shift',
-};
-
-interface ItemFormState {
-  title: string;
-  type: WorkItemType;
-  agent: AgentType;
-  description: string;
-  workspaceId: string;
-}
-
-const emptyForm = (): ItemFormState => ({
-  title: '',
-  type: 'story',
-  agent: 'mock',
-  description: '',
-  workspaceId: '',
-});
+  AGENTS,
+  COLUMNS,
+  CONSOLE_HEIGHT_KEY,
+  DEFAULT_CONSOLE_HEIGHT,
+  DEFAULT_DETAIL_WIDTH,
+  DETAIL_WIDTH_KEY,
+  SPRINT_STATUSES,
+  TYPES,
+  LOOP_STATUS_LABEL,
+  activityContent,
+  activityWorkDir,
+  emptyForm,
+  emptySprintForm,
+  readStoredNumber,
+  readStoredSprintSelection,
+  storeNumber,
+  storeSprintSelection,
+  type ItemFormState,
+  type SprintFormState,
+} from './board/constants';
+import { buildBoardSearchParams, parseBoardSearchParams } from './board/board-url';
+import BoardModals from './board/BoardModals';
+import WorkItemCard from './board/WorkItemCard';
+import WorkItemDetail, { type PipelineResultState } from './board/WorkItemDetail';
 
 export default function Board() {
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const boardUrl = parseBoardSearchParams(searchParams);
   const pendingJobsByWorkItem = useAppStore((s) => s.pendingJobsByWorkItem);
   const setPendingJob = useAppStore((s) => s.setPendingJob);
   const clearPendingJob = useAppStore((s) => s.clearPendingJob);
@@ -245,12 +106,22 @@ export default function Board() {
   const activeSprint = sprints?.find((s) => s.status === 'active') ?? sprints?.[0];
   /** `undefined` = auto-select active sprint; `null` = All items; string = explicit sprint id */
   const [sprintId, setSprintIdState] = useState<string | null | undefined>(() =>
-    readStoredSprintSelection()
+    boardUrl.sprintId !== undefined ? boardUrl.sprintId : readStoredSprintSelection()
   );
-  const setSprintId = useCallback((value: string | null | undefined) => {
-    setSprintIdState(value);
-    storeSprintSelection(value);
-  }, []);
+  const setSprintId = useCallback(
+    (value: string | null | undefined) => {
+      setSprintIdState(value);
+      storeSprintSelection(value);
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        if (value === undefined) params.delete('sprint');
+        else if (value === null) params.set('sprint', 'all');
+        else params.set('sprint', value);
+        return params;
+      }, { replace: true });
+    },
+    [setSearchParams]
+  );
   const selectedSprint = sprintId === null ? undefined : (sprintId ?? activeSprint?.id);
   const currentSprint: Sprint | undefined = sprints?.find((s) => s.id === selectedSprint);
 
@@ -292,13 +163,7 @@ export default function Board() {
 
   const [selected, setSelected] = useState<WorkItem | null>(null);
   const hasAutoOpenedRef = useRef(false);
-  const [pipelineResult, setPipelineResult] = useState<{
-    steps: PipelineStepResult[];
-    reviewVerdict: string;
-    iterations: number;
-    loopStatus: LoopStatus;
-    evalResults?: EvalResult[];
-  } | null>(null);
+  const [pipelineResult, setPipelineResult] = useState<PipelineResultState | null>(null);
   const selectedHasPendingJob = selected ? Boolean(pendingJobsByWorkItem[selected.id]) : false;
   const isSelectedBusy =
     !!activeJobId ||
@@ -415,7 +280,25 @@ export default function Board() {
   }, [board]);
 
   useEffect(() => {
-    if (!board || selected || hasAutoOpenedRef.current) return;
+    const itemId = boardUrl.itemId;
+    if (!itemId || !board) return;
+    for (const col of COLUMNS) {
+      const found = board.columns[col.id]?.find((i) => i.id === itemId);
+      if (found) {
+        if (selected?.id !== found.id) setSelected(found);
+        return;
+      }
+    }
+  }, [board, boardUrl.itemId, selected?.id]);
+
+  useEffect(() => {
+    if (boardUrl.sprintId === undefined || boardUrl.sprintId === sprintId) return;
+    setSprintIdState(boardUrl.sprintId);
+    storeSprintSelection(boardUrl.sprintId);
+  }, [boardUrl.sprintId, sprintId]);
+
+  useEffect(() => {
+    if (!board || selected || hasAutoOpenedRef.current || boardUrl.itemId) return;
     const primary =
       runningItems.find((i) => i.loopStatus === 'running') ?? runningItems[0];
     if (primary) {
@@ -423,8 +306,9 @@ export default function Board() {
       setSelected(primary);
       setLastAgentOutput(null);
       setPipelineResult(null);
+      setSearchParams((prev) => buildBoardSearchParams(prev, { item: primary.id }), { replace: true });
     }
-  }, [board, selected, runningItems]);
+  }, [board, selected, runningItems, boardUrl.itemId, setSearchParams]);
 
   useEffect(() => {
     if (boardItem && selected && boardItem.id === selected.id) {
@@ -450,20 +334,6 @@ export default function Board() {
       typeof ws?.config?.primaryRepoId === 'string' ? ws.config.primaryRepoId : selectedWorkspaceRepos[0]?.id;
     return selectedWorkspaceRepos.find((r) => r.id === primaryId)?.path ?? selectedWorkspaceRepos[0]?.path;
   }, [boardItem?.workspaceId, selectedWorkspaceRepos, workspaces]);
-
-  const activityByIteration = useMemo(() => {
-    if (!activity?.length) return [];
-    const groups = new Map<number, WorkItemActivity[]>();
-    for (const a of activity) {
-      const iter = activityLoopIteration(a) ?? 0;
-      const list = groups.get(iter) ?? [];
-      list.push(a);
-      groups.set(iter, list);
-    }
-    return Array.from(groups.entries())
-      .sort(([a], [b]) => b - a)
-      .map(([iteration, entries]) => ({ iteration, entries }));
-  }, [activity]);
 
   const latestAgentResult = useMemo(() => {
     if (!activity?.length) return lastAgentOutput;
@@ -493,6 +363,7 @@ export default function Board() {
   }, [activity, lastAgentOutput, linkedAudit]);
 
   const openCreate = () => {
+    setEditItem(null);
     setForm(emptyForm());
     setCreateOpen(true);
   };
@@ -509,6 +380,7 @@ export default function Board() {
       notifyBusy(item, hasJob);
       return;
     }
+    setCreateOpen(false);
     setEditItem(item);
     setForm({
       title: item.title,
@@ -788,6 +660,7 @@ export default function Board() {
             updatedAt: new Date().toISOString(),
             sprintId: selectedSprint,
           });
+          setSearchParams((prev) => buildBoardSearchParams(prev, { item: focusId }), { replace: false });
         }
         return;
       }
@@ -814,6 +687,7 @@ export default function Board() {
           updatedAt: new Date().toISOString(),
           sprintId: selectedSprint,
         });
+        setSearchParams((prev) => buildBoardSearchParams(prev, { item: focusId }), { replace: false });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sprint queue failed';
@@ -1066,10 +940,12 @@ export default function Board() {
     setSelected(item);
     setLastAgentOutput(null);
     setPipelineResult(null);
+    setSearchParams((prev) => buildBoardSearchParams(prev, { item: item.id }), { replace: false });
   };
 
   const closeDetail = () => {
     setSelected(null);
+    setSearchParams((prev) => buildBoardSearchParams(prev, { item: null }), { replace: false });
   };
 
   const renderItemForm = (mode: 'create' | 'edit') => (
@@ -1548,53 +1424,6 @@ export default function Board() {
         </div>
       )}
 
-      <Modal id="modal-staff-team" open={staffOpen} title="Staff sprint team" onClose={() => setStaffOpen(false)}>
-        <div className="form-stack">
-          {!roster?.length ? (
-            <p className="text-muted">Hire agents on the Agents page first.</p>
-          ) : (
-            STAFF_ROLES.map((role) => (
-              <label key={role}>
-                {AGENT_ROLE_LABELS[role]}
-                <select
-                  className="input"
-                  value={staffDraft[role]}
-                  onChange={(e) => setStaffDraft((d) => ({ ...d, [role]: e.target.value }))}
-                >
-                  <option value="">— Unassigned —</option>
-                  {roster.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.employment?.displayTitle ?? r.name} ({r.employment?.role})
-                      {r.onShift ? ' · on shift' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))
-          )}
-          {staffError ? (
-            <p className="form-error">{staffError}</p>
-          ) : sprintTeam?.conflicts.length ? (
-            <p className="text-muted" style={{ color: 'var(--color-warning)' }}>
-              Conflicts: {sprintTeam.conflicts.join('; ')}
-            </p>
-          ) : null}
-          <div className="modal-actions">
-            <button type="button" className="btn btn--ghost" onClick={() => setStaffOpen(false)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn--primary"
-              onClick={handleSaveTeam}
-              disabled={setSprintTeam.isPending || !roster?.length}
-            >
-              Save team
-            </button>
-          </div>
-        </div>
-      </Modal>
-
       {actionNotice && (
         <div className="board-action-notice" role="status">
           <AlertCircle size={16} />
@@ -1623,163 +1452,24 @@ export default function Board() {
                     <span className="kanban-count">{board?.columns[col.id]?.length ?? 0}</span>
                   </div>
                   <div className="kanban-cards">
-                    {board?.columns[col.id]?.map((item) => {
-                      const cardHasJob = itemHasActiveJob(item.id);
-                      const cardBusy = isWorkItemBusy(item, cardHasJob);
-                      const busyTitle = cardBusy ? workItemBusyMessage(item, cardHasJob) : undefined;
-                      const desc = item.description?.trim() ?? '';
-                      return (
-                      <div
+                    {board?.columns[col.id]?.map((item) => (
+                      <WorkItemCard
                         key={item.id}
-                        id={`card-${item.key}`}
-                        className={`kanban-card${selected?.id === item.id ? ' kanban-card--selected' : ''}${item.loopStatus === 'escalated' ? ' kanban-card--escalated' : ''}${item.loopStatus === 'running' ? ' kanban-card--loop-running' : ''}${cardBusy ? ' kanban-card--busy' : ''}`}
-                        onClick={() => openItem(item)}
-                        onKeyDown={(e) => e.key === 'Enter' && openItem(item)}
-                        role="button"
-                        tabIndex={0}
-                        title={`${item.key}: ${displayWorkItemTitle(item.title, 160)}`}
-                      >
-                        <div className="kanban-card-top">
-                          <div className="kanban-card-ids">
-                            <span className="kanban-key">{item.key}</span>
-                            <span className="kanban-type" style={{ color: TYPE_COLORS[item.type] }}>
-                              {item.type}
-                            </span>
-                          </div>
-                          <div className="kanban-card-badges">
-                            {loopBadgeLabel(item) && (
-                              <span
-                                className={`loop-badge${item.loopStatus === 'escalated' ? ' loop-badge--escalated' : ''}${item.loopStatus === 'running' ? ' loop-badge--running' : ''}`}
-                                title={LOOP_STATUS_LABEL[item.loopStatus]}
-                              >
-                                {loopBadgeLabel(item)}
-                              </span>
-                            )}
-                            {(() => {
-                              const chip = workItemLifecycleChip(item);
-                              if (!chip) return null;
-                              return (
-                                <span
-                                  className={`lifecycle-chip lifecycle-chip--${chip.phase}`}
-                                  title={chip.label}
-                                >
-                                  {chip.short}
-                                </span>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                        <h4 className="kanban-title">{displayWorkItemTitle(item.title)}</h4>
-                        {desc ? <p className="kanban-desc">{desc}</p> : null}
-                        {cardBusy && (
-                          <p className="kanban-busy-hint">
-                            <Lock size={12} /> Agents working — run and edit locked
-                          </p>
-                        )}
-                        {item.loopStatus === 'running' && cliPreviews[item.id]?.length ? (
-                          <KanbanCliPreview lines={cliPreviews[item.id]} />
-                        ) : null}
-                        <div className="kanban-card-meta">
-                          {item.storyPoints != null && <span className="kanban-points">{item.storyPoints}pt</span>}
-                          {(item.assignedAgentId || item.assignedAgentType) && (
-                            <span className="kanban-agent">
-                              <Bot size={12} />{' '}
-                              {item.assignedAgentId
-                                ? displayNames[item.assignedAgentId] ?? item.assignedAgentType
-                                : item.assignedAgentType}
-                            </span>
-                          )}
-                          {item.labels?.includes('sprint-bootstrap') && (
-                            <span className="kanban-bootstrap-tag" title="Created by empty-sprint queue">
-                              bootstrap
-                            </span>
-                          )}
-                        </div>
-                        <div className="kanban-card-actions" onClick={(e) => e.stopPropagation()}>
-                          {item.status !== 'done' && (
-                            <button
-                              type="button"
-                              className="btn btn--sm btn--ghost"
-                              onClick={() => handleRunAgent(item)}
-                              disabled={
-                                cardBusy ||
-                                runAgent.isPending ||
-                                runPipeline.isPending ||
-                                runLifecycle.isPending
-                              }
-                              title={busyTitle ?? 'Run single agent'}
-                            >
-                              <Play size={12} /> Run
-                            </button>
-                          )}
-                          {item.status !== 'done' && (
-                            <button
-                              type="button"
-                              className="btn btn--sm btn--ghost"
-                              onClick={() => handleRunPipeline(item)}
-                              disabled={
-                                cardBusy ||
-                                runAgent.isPending ||
-                                runPipeline.isPending ||
-                                runLifecycle.isPending
-                              }
-                              title={busyTitle ?? 'Grok → Copilot loop until approved'}
-                            >
-                              <GitBranch size={12} />
-                            </button>
-                          )}
-                          {item.status !== 'done' && item.type === 'story' && (
-                            <button
-                              type="button"
-                              className="btn btn--sm btn--ghost"
-                              onClick={() => handleRunLifecycle(item)}
-                              disabled={
-                                cardBusy ||
-                                runAgent.isPending ||
-                                runPipeline.isPending ||
-                                runLifecycle.isPending
-                              }
-                              title={
-                                busyTitle ??
-                                'Full lifecycle: BA → PM → developer pipeline (from current phase)'
-                              }
-                            >
-                              <Layers size={12} />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="btn btn--sm btn--ghost"
-                            onClick={() => openEdit(item)}
-                            disabled={cardBusy}
-                            title={busyTitle ?? 'Edit'}
-                          >
-                            <Pencil size={12} />
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn--sm btn--ghost"
-                            onClick={() => setDeleteTarget(item)}
-                            title="Delete"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                          <select
-                            className="input input--sm kanban-move-select"
-                            value={item.status}
-                            onChange={(e) => requestMove(item, e.target.value as WorkItemStatus)}
-                            aria-label={`Move ${item.key}`}
-                          >
-                            {COLUMNS.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    );
-                    })}
+                        item={item}
+                        selected={selected?.id === item.id}
+                        cardHasJob={itemHasActiveJob(item.id)}
+                        displayNames={displayNames}
+                        cliPreview={cliPreviews[item.id]}
+                        runPending={runAgent.isPending || runPipeline.isPending || runLifecycle.isPending}
+                        onOpen={openItem}
+                        onRunAgent={(next) => void handleRunAgent(next)}
+                        onRunPipeline={(next) => void handleRunPipeline(next)}
+                        onRunLifecycle={(next) => void handleRunLifecycle(next)}
+                        onEdit={openEdit}
+                        onDelete={setDeleteTarget}
+                        onMove={requestMove}
+                      />
+                    ))}
                   </div>
                 </div>
               ))}
@@ -1788,570 +1478,87 @@ export default function Board() {
         </div>
 
         {selected && boardItem && (
-          <>
-            <button
-              type="button"
-              className="board-detail-backdrop"
-              aria-label="Close work item detail"
-              onClick={closeDetail}
-            />
-            <aside
-              id="work-item-detail"
-              className="card work-item-detail board-detail-pane"
-              style={{ width: detailWidth }}
-            >
-              <div
-                className="board-detail-resize-handle"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize work item detail panel"
-                onPointerDown={(e) => detailResize.startDrag(e, detailWidth)}
-                onPointerMove={detailResize.onDrag}
-                onPointerUp={detailResize.endDrag}
-                onPointerCancel={detailResize.endDrag}
-              >
-                <GripVertical size={14} />
-              </div>
-              <div className="board-detail-inner">
-          <div className="work-item-detail-header">
-            <div className="work-item-detail-heading">
-              <span className="kanban-key">{boardItem.key}</span>
-              <h3 className="work-item-detail-title" title={displayWorkItemTitle(boardItem.title, 200)}>
-                {displayWorkItemTitle(boardItem.title, 140)}
-              </h3>
-              {isOversizedTitle(boardItem.title) && (
-                <details className="work-item-title-overflow">
-                  <summary>Full title document ({boardItem.title.length.toLocaleString()} chars)</summary>
-                  <pre className="work-item-title-overflow-body">
-                    {titleOverflowBody(boardItem.title) || boardItem.title}
-                  </pre>
-                </details>
-              )}
-              <div className="work-item-detail-status-row">
-                <StatusBadge status={boardItem.status} id={`detail-status-${boardItem.id}`} />
-                {(() => {
-                  const chip = workItemLifecycleChip(boardItem);
-                  if (!chip) return null;
-                  return (
-                    <span
-                      className={`lifecycle-chip lifecycle-chip--detail lifecycle-chip--${chip.phase}`}
-                      title={chip.label}
-                    >
-                      {chip.short} · {chip.label}
-                    </span>
-                  );
-                })()}
-                {boardItem.loopIteration > 0 || boardItem.loopStatus !== 'idle' ? (
-                  <span
-                    className={`loop-badge loop-badge--detail${boardItem.loopStatus === 'escalated' ? ' loop-badge--escalated' : ''}${boardItem.loopStatus === 'running' ? ' loop-badge--running' : ''}`}
-                  >
-                    Loop {boardItem.loopIteration}/{boardItem.maxLoopIterations} ·{' '}
-                    {LOOP_STATUS_LABEL[boardItem.loopStatus]}
-                  </span>
-                ) : null}
-                {boardItem.labels?.includes('sprint-bootstrap') && (
-                  <span className="kanban-bootstrap-tag">sprint bootstrap</span>
-                )}
-              </div>
-            </div>
-            <div className="work-item-detail-actions">
-              {(boardItem.loopStatus === 'escalated' || boardItem.loopStatus === 'failed') && (
-                <button
-                  type="button"
-                  className="btn btn--primary btn--sm"
-                  onClick={() => handleRerunReview(boardItem)}
-                  disabled={detailBusy.busy || rerunReview.isPending}
-                  title={
-                    detailBusy.busy
-                      ? detailBusy.message
-                      : 'Reviewer harness re-assesses deliverables; auto-chains fix loop if needed'
-                  }
-                >
-                  <GitBranch size={14} /> Re-run review
-                </button>
-              )}
-              {boardItem.status !== 'done' && boardItem.type === 'story' && (
-                <button
-                  type="button"
-                  className={`btn btn--sm${
-                    boardItem.loopStatus === 'escalated' || boardItem.loopStatus === 'failed'
-                      ? ' btn--ghost'
-                      : ' btn--primary'
-                  }`}
-                  onClick={() => handleRunLifecycle(boardItem)}
-                  disabled={detailBusy.busy || runLifecycle.isPending || runPipeline.isPending}
-                  title={
-                    detailBusy.busy
-                      ? detailBusy.message
-                      : 'BA → PM → developer pipeline from current lifecycle phase'
-                  }
-                >
-                  <Layers size={14} /> Full lifecycle
-                </button>
-              )}
-              {boardItem.status !== 'done' && (
-                <button
-                  type="button"
-                  className={`btn btn--sm${
-                    boardItem.type === 'story' ||
-                    boardItem.loopStatus === 'escalated' ||
-                    boardItem.loopStatus === 'failed'
-                      ? ' btn--ghost'
-                      : ' btn--primary'
-                  }`}
-                  onClick={() => handleRunPipeline(boardItem)}
-                  disabled={detailBusy.busy || runPipeline.isPending || runLifecycle.isPending}
-                  title={detailBusy.busy ? detailBusy.message : 'Run Grok → Copilot pipeline only'}
-                >
-                  <GitBranch size={14} /> Grok → Copilot
-                </button>
-              )}
-              {boardItem.loopStatus === 'running' && (
-                <button
-                  id="btn-cancel-loop"
-                  type="button"
-                  className="btn btn--ghost btn--sm btn--danger"
-                  onClick={() => cancelLoop.mutate(boardItem.id)}
-                  disabled={cancelLoop.isPending}
-                  title="Cancel running loop and kill CLI processes"
-                >
-                  <Square size={14} /> Cancel loop
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                onClick={() => openEdit(boardItem)}
-                disabled={detailBusy.busy}
-                title={detailBusy.busy ? detailBusy.message : 'Edit work item'}
-              >
-                <Pencil size={14} /> Edit
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                onClick={() => setMoveTarget({ item: boardItem, toStatus: boardItem.status })}
-              >
-                <ArrowRightLeft size={14} /> Move
-              </button>
-              <button type="button" className="btn btn--ghost btn--sm btn--danger" onClick={() => setDeleteTarget(boardItem)}>
-                <Trash2 size={14} /> Delete
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                title="Narrow panel"
-                onClick={() => setDetailWidthPersisted(380)}
-              >
-                <PanelRightClose size={14} />
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                title="Wide panel"
-                onClick={() => setDetailWidthPersisted(640)}
-              >
-                <PanelRightOpen size={14} />
-              </button>
-              <button type="button" className="btn btn--ghost" onClick={closeDetail}>
-                Close
-              </button>
-            </div>
-          </div>
-
-          {activeJobId && polledJob && (
-            <p className="board-job-banner">
-              Background job {polledJob.status}
-              {polledJob.error ? ` — ${polledJob.error}` : ''}
-            </p>
-          )}
-
-          {detailBusy.busy && (
-            <div className="work-item-busy-banner" role="status">
-              <Lock size={16} />
-              <div>
-                <strong>Item locked while agents are working</strong>
-                <p>{detailBusy.message}</p>
-              </div>
-            </div>
-          )}
-
-          <AgentConsole
-            workItemKey={boardItem.key}
-            entries={agentConsole.entries}
-            status={agentConsole.status}
-            sessionKey={agentConsole.sessionKey}
-            height={consoleHeight}
-            onResizeHeight={setConsoleHeight}
-            onCommitHeight={persistConsoleHeight}
-            idleHint={agentConsole.idleHint}
-            onClear={agentConsole.clearConsole}
-          />
-
-          <div className="board-detail-body">
-          <WorkItemAgentHistory
-            workItem={boardItem}
+          <WorkItemDetail
+            boardItem={boardItem}
+            detailWidth={detailWidth}
+            onResizePointerDown={(e, width) => detailResize.startDrag(e, width)}
+            onResizePointerMove={detailResize.onDrag}
+            onResizePointerUp={detailResize.endDrag}
+            onClose={closeDetail}
+            onSetWidth={setDetailWidthPersisted}
+            detailBusy={detailBusy}
+            onRerunReview={(next) => void handleRerunReview(next)}
+            onRunLifecycle={(next) => void handleRunLifecycle(next)}
+            onRunPipeline={(next) => void handleRunPipeline(next)}
+            onCancelLoop={(id) => cancelLoop.mutate(id)}
+            onEdit={openEdit}
+            onMove={(next) => setMoveTarget({ item: next, toStatus: next.status })}
+            onDelete={setDeleteTarget}
+            rerunPending={rerunReview.isPending}
+            lifecyclePending={runLifecycle.isPending}
+            pipelinePending={runPipeline.isPending}
+            cancelPending={cancelLoop.isPending}
+            activeJobId={activeJobId}
+            jobBanner={
+              activeJobId && polledJob
+                ? `Background job ${polledJob.status}${polledJob.error ? ` — ${polledJob.error}` : ''}`
+                : null
+            }
+            agentConsole={agentConsole}
+            consoleHeight={consoleHeight}
+            onConsoleHeight={setConsoleHeight}
+            onCommitConsoleHeight={persistConsoleHeight}
             activity={activity}
             loopHistory={loopHistory}
-            isBusy={detailBusy.busy}
-            agentNames={displayNames}
+            displayNames={displayNames}
+            deliverables={deliverables}
+            workspaces={workspaces}
+            focusedProjectPath={focusedProjectPath}
+            pipelineResult={pipelineResult}
+            latestAgentResult={latestAgentResult}
+            latestCompleted={latestCompleted}
           />
-
-          {boardItem.status !== 'done' &&
-            (boardItem.loopStatus === 'escalated' ||
-              boardItem.loopStatus === 'failed' ||
-              (deliverables?.files.length ?? 0) > 0) && (
-              <div className="deliverables-banner">
-                {boardItem.loopStatus === 'escalated' || boardItem.loopStatus === 'failed' ? (
-                  <p>
-                    <strong>Loop exhausted — harness escalated for review.</strong> The staffed reviewer
-                    will auto re-assess when on shift (Autonomous mode). Use <strong>Re-run review</strong>{' '}
-                    for an immediate harness pass, or move to Done if you accept the deliverables.
-                  </p>
-                ) : (
-                  <p>
-                    <strong>Agent output is ready.</strong> Files are saved under the work directory below
-                    (not applied to <code>src/</code> automatically).
-                  </p>
-                )}
-              </div>
-            )}
-
-          {deliverables && deliverables.files.length > 0 && (
-            <div className="deliverables-panel card">
-              <h4>Deliverables ({deliverables.files.length})</h4>
-              {deliverables.outputDir && (
-                <p className="text-muted deliverables-dir">
-                  <code>{deliverables.outputDir}</code>
-                </p>
-              )}
-              <ul className="deliverables-list">
-                {deliverables.files.map((f) => (
-                  <li key={f.path}>
-                    <strong>{f.name}</strong>
-                    <span className="text-muted">
-                      {' '}
-                      · {(f.size / 1024).toFixed(1)} KB · {new Date(f.modifiedAt).toLocaleString()}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {boardItem.description?.trim() ? (
-            <details className="work-item-desc-block" open={boardItem.description.trim().length < 280}>
-              <summary className="work-item-desc-summary">
-                Description
-                <span className="work-item-desc-preview">
-                  {boardItem.description.trim().replace(/\s+/g, ' ').slice(0, 120)}
-                  {boardItem.description.trim().length > 120 ? '…' : ''}
-                </span>
-              </summary>
-              <div className="work-item-desc">{boardItem.description.trim()}</div>
-            </details>
-          ) : null}
-          <div className="work-item-detail-meta">
-            <span>Type: {boardItem.type}</span>
-            <span>Priority: {boardItem.priority}</span>
-            <span>Column: {COLUMN_LABEL[boardItem.status]}</span>
-            {boardItem.assignedAgentType && <span>Agent: {boardItem.assignedAgentType}</span>}
-            {boardItem.workspaceId && (
-              <span>
-                Workspace: {workspaces?.find((w) => w.id === boardItem.workspaceId)?.name ?? boardItem.workspaceId}
-                {focusedProjectPath ? ` · ${focusedProjectPath}` : ''}
-              </span>
-            )}
-          </div>
-          {boardItem.acceptanceCriteria.length > 0 && (
-            <div className="work-item-criteria">
-              <h4>Acceptance criteria</h4>
-              <ul>
-                {boardItem.acceptanceCriteria.map((c, index) => (
-                  <li key={`${index}-${c}`}>{c}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {pipelineResult && (
-            <div className="pipeline-result-panel">
-              <h4>
-                <GitBranch size={16} /> Multi-agent pipeline
-              </h4>
-              <p className="pipeline-verdict">
-                Review verdict: <strong>{pipelineResult.reviewVerdict}</strong>
-                {' · '}
-                {pipelineResult.iterations} iteration(s) · {LOOP_STATUS_LABEL[pipelineResult.loopStatus]}
-              </p>
-              {pipelineResult.evalResults && pipelineResult.evalResults.length > 0 && (
-                <ul className="eval-checklist">
-                  {pipelineResult.evalResults.map((e) => (
-                    <li key={e.evalId} className={e.passed ? 'eval-pass' : 'eval-fail'}>
-                      {e.passed ? '✓' : '✗'} {e.evalId}: {e.details}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {pipelineResult.steps.map((step, index) => (
-                <div
-                  key={step.auditId ?? `${step.loopIteration}-${step.phase}-${index}`}
-                  className="pipeline-step-block"
-                >
-                  <div className="pipeline-step-header">
-                    <span className="pipeline-iteration">iter {step.loopIteration}</span>
-                    <span className="pipeline-phase">{step.phase}</span>
-                    <span className="kanban-agent">
-                      <Bot size={12} /> {step.agentType}
-                    </span>
-                    {step.filesCreated.length > 0 && (
-                      <span className="pipeline-files">Files: {step.filesCreated.join(', ')}</span>
-                    )}
-                  </div>
-                  <pre className="activity-output-preview">{step.content}</pre>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {latestAgentResult && !pipelineResult ? (
-            <div className="agent-output-panel">
-              <div className="agent-output-header">
-                <h4>
-                  <FileText size={16} /> Agent output
-                </h4>
-                <span className="kanban-agent">
-                  <Bot size={12} /> {latestAgentResult.agentType}
-                </span>
-              </div>
-              <pre className="agent-output-content">{latestAgentResult.content}</pre>
-              {latestAgentResult.workDir && (
-                <p className="agent-output-hint">
-                  Work directory: <code>{latestAgentResult.workDir}</code>
-                </p>
-              )}
-              {Array.isArray(latestCompleted?.metadata?.filesCreated) &&
-                (latestCompleted.metadata.filesCreated as string[]).length > 0 && (
-                  <p className="agent-output-hint agent-output-success">
-                    Files created: {(latestCompleted.metadata.filesCreated as string[]).join(', ')}
-                  </p>
-                )}
-              {typeof latestCompleted?.metadata?.fileWarning === 'string' && (
-                <p className="agent-output-warning">{latestCompleted.metadata.fileWarning}</p>
-              )}
-              {latestAgentResult.auditId && (
-                <p className="agent-output-hint">
-                  Full trace: <a href={`/audit#${latestAgentResult.auditId}`}>Audit entry</a>
-                </p>
-              )}
-            </div>
-          ) : !pipelineResult ? (
-            <p className="text-muted agent-output-empty">
-              No agent output yet. Use Run (single agent) or the pipeline button (Grok → Copilot).
-            </p>
-          ) : null}
-
-          <details className="agent-history-raw-details">
-            <summary>Raw activity log</summary>
-            <div className="activity-feed">
-              {activity?.length === 0 && <p className="text-muted">No activity yet.</p>}
-              {activityByIteration.map(({ iteration, entries }) => (
-                <div
-                  key={entries[0]?.id ?? `iteration-${iteration}`}
-                  className="activity-iteration-group"
-                >
-                  {iteration > 0 && (
-                    <div className="activity-iteration-header">Iteration {iteration}</div>
-                  )}
-                  {entries.map((a) => {
-                    const output = activityContent(a);
-                    const error =
-                      typeof a.metadata?.error === 'string' ? a.metadata.error : undefined;
-                    const workDir = activityWorkDir(a);
-                    return (
-                      <div key={a.id} className="activity-row activity-row--stacked">
-                        <div className="activity-row-main">
-                          <span className="activity-type">{a.activityType}</span>
-                          <span>
-                            {typeof a.metadata?.pipelinePhase === 'string' && (
-                              <span className="pipeline-phase">
-                                {a.metadata.pipelinePhase} ·{' '}
-                              </span>
-                            )}
-                            {a.summary}
-                          </span>
-                          {a.agentType && <span className="kanban-agent">{a.agentType}</span>}
-                          <time>{new Date(a.createdAt).toLocaleString()}</time>
-                        </div>
-                        {output && <pre className="activity-output-preview">{output}</pre>}
-                        {error && <p className="activity-error">{error}</p>}
-                        {activityEvalResults(a)?.map((e) => (
-                          <div
-                            key={e.evalId}
-                            className={`eval-row ${e.passed ? 'eval-pass' : 'eval-fail'}`}
-                          >
-                            {e.passed ? '✓' : '✗'} <strong>{e.evalId}</strong> ({e.type}):{' '}
-                            {e.details}
-                          </div>
-                        ))}
-                        {workDir && a.activityType === 'agent_completed' && (
-                          <p className="activity-output-hint">
-                            Work directory: <code>{workDir}</code>
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </details>
-          </div>
-              </div>
-            </aside>
-          </>
         )}
       </div>
 
-      <Modal id="modal-create-work-item" open={createOpen} onClose={() => setCreateOpen(false)} title="Create work item">
-        {renderItemForm('create')}
-      </Modal>
-
-      <Modal
-        id="modal-create-sprint"
-        open={sprintCreateOpen}
-        onClose={() => setSprintCreateOpen(false)}
-        title="Create sprint"
-      >
-        {renderSprintForm('create')}
-      </Modal>
-
-      <Modal
-        id="modal-edit-sprint"
-        open={sprintEditOpen}
-        onClose={() => setSprintEditOpen(false)}
-        title={currentSprint ? `Edit sprint · ${currentSprint.name}` : 'Edit sprint'}
-      >
-        {currentSprint && renderSprintForm('edit')}
-      </Modal>
-
-      <Modal
-        id="modal-delete-sprint"
-        open={sprintDeleteOpen}
-        onClose={() => setSprintDeleteOpen(false)}
-        title="Delete sprint"
-      >
-        {currentSprint && (
-          <div className="form-stack">
-            <p>
-              Delete sprint <strong>{currentSprint.name}</strong>? Work items stay on the board but are unassigned
-              from this sprint. This cannot be undone.
-            </p>
-            <div className="modal-actions">
-              <button type="button" className="btn btn--ghost" onClick={() => setSprintDeleteOpen(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn--danger"
-                onClick={() => void handleDeleteSprint()}
-                disabled={deleteSprint.isPending}
-              >
-                {deleteSprint.isPending ? 'Deleting…' : 'Delete sprint'}
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      <Modal
-        id="modal-edit-work-item"
-        open={!!editItem}
-        onClose={() => setEditItem(null)}
-        title={editItem ? `Edit ${editItem.key}` : 'Edit work item'}
-      >
-        {editItem && renderItemForm('edit')}
-      </Modal>
-
-      <Modal
-        id="modal-delete-work-item"
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        title="Delete work item"
-      >
-        {deleteTarget && (
-          <div className="form-stack">
-            <p>
-              Delete <strong>{deleteTarget.key}</strong> — {deleteTarget.title}? This cannot be undone.
-            </p>
-            <div className="modal-actions">
-              <button type="button" className="btn btn--ghost" onClick={() => setDeleteTarget(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn--danger"
-                onClick={handleDelete}
-                disabled={deleteItem.isPending}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      <Modal
-        id="modal-move-work-item"
-        open={!!moveTarget}
-        onClose={() => setMoveTarget(null)}
-        title="Move work item"
-      >
-        {moveTarget && (
-          <div className="form-stack">
-            <p>
-              Move <strong>{moveTarget.item.key}</strong> from{' '}
-              <strong>{COLUMN_LABEL[moveTarget.item.status]}</strong> to:
-            </p>
-            <label>
-              Destination column
-              <select
-                className="input"
-                value={moveTarget.toStatus}
-                onChange={(e) =>
-                  setMoveTarget((m) => (m ? { ...m, toStatus: e.target.value as WorkItemStatus } : m))
-                }
-              >
-                {COLUMNS.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {moveTarget.item.status === moveTarget.toStatus ? (
-              <p className="text-muted">Select a different column to move this item.</p>
-            ) : (
-              <p className="move-confirm-text">
-                Confirm moving to <strong>{COLUMN_LABEL[moveTarget.toStatus]}</strong>?
-              </p>
-            )}
-            <div className="modal-actions">
-              <button type="button" className="btn btn--ghost" onClick={() => setMoveTarget(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn--primary"
-                onClick={confirmMove}
-                disabled={moveTarget.item.status === moveTarget.toStatus || updateItem.isPending}
-              >
-                Confirm move
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      <BoardModals
+        staffOpen={staffOpen}
+        onCloseStaff={() => setStaffOpen(false)}
+        roster={roster}
+        staffDraft={staffDraft}
+        onStaffDraftChange={(role, agentId) => setStaffDraft((d) => ({ ...d, [role]: agentId }))}
+        staffError={staffError}
+        sprintTeam={sprintTeam}
+        onSaveTeam={() => void handleSaveTeam()}
+        saveTeamPending={setSprintTeam.isPending}
+        createOpen={createOpen}
+        onCloseCreate={() => setCreateOpen(false)}
+        editItem={editItem}
+        onCloseEdit={() => setEditItem(null)}
+        itemForm={renderItemForm(editItem ? 'edit' : 'create')}
+        deleteTarget={deleteTarget}
+        onCloseDelete={() => setDeleteTarget(null)}
+        onConfirmDelete={() => void handleDelete()}
+        deletePending={deleteItem.isPending}
+        moveTarget={moveTarget}
+        onCloseMove={() => setMoveTarget(null)}
+        onMoveStatusChange={(status) =>
+          setMoveTarget((m) => (m ? { ...m, toStatus: status } : m))
+        }
+        onConfirmMove={() => void confirmMove()}
+        movePending={updateItem.isPending}
+        sprintCreateOpen={sprintCreateOpen}
+        onCloseSprintCreate={() => setSprintCreateOpen(false)}
+        sprintEditOpen={sprintEditOpen}
+        onCloseSprintEdit={() => setSprintEditOpen(false)}
+        currentSprint={currentSprint}
+        sprintForm={renderSprintForm(sprintEditOpen ? 'edit' : 'create')}
+        sprintDeleteOpen={sprintDeleteOpen}
+        onCloseSprintDelete={() => setSprintDeleteOpen(false)}
+        onConfirmSprintDelete={() => void handleDeleteSprint()}
+        sprintDeletePending={deleteSprint.isPending}
+      />
     </div>
   );
 }
+

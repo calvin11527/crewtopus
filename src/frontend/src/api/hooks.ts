@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
+import { useAppStore } from '../stores/useAppStore';
 import { api } from './client';
 import { buildLogEventsQuery, LOG_PAGE_SIZE } from '../utils/log-events';
 import type {
@@ -536,19 +537,13 @@ export function useSupervisorStatus() {
   });
 }
 
-function boardHasBusyItems(board?: WorkBoard): boolean {
-  if (!board) return false;
-  return Object.values(board.columns).some((col) =>
-    col.some((item) => item.status === 'in_progress' || item.loopStatus === 'running')
-  );
-}
-
 export function useBoard(sprintId?: string) {
+  const connectionStatus = useAppStore((s) => s.connectionStatus);
   const qs = sprintId ? `?sprintId=${sprintId}` : '';
   return useQuery<WorkBoard>({
     queryKey: queryKeys.board(sprintId),
     queryFn: () => api.get(`/work-items/board${qs}`),
-    refetchInterval: (query) => (boardHasBusyItems(query.state.data) ? 2000 : 10_000),
+    refetchInterval: () => (connectionStatus === 'connected' ? false : 2000),
   });
 }
 
@@ -608,29 +603,32 @@ export function useDeleteSprint() {
 }
 
 export function useWorkItemActivity(workItemId: string | null, pollWhileBusy = false) {
+  const connectionStatus = useAppStore((s) => s.connectionStatus);
   return useQuery<WorkItemActivity[]>({
     queryKey: queryKeys.workItemActivity(workItemId ?? ''),
     queryFn: () => api.get(`/work-items/${workItemId}/activity`),
     enabled: !!workItemId,
-    refetchInterval: pollWhileBusy ? 2000 : false,
+    refetchInterval: connectionStatus === 'connected' ? false : pollWhileBusy ? 2000 : false,
   });
 }
 
 export function useWorkItemLoop(workItemId: string | null, pollWhileBusy = false) {
+  const connectionStatus = useAppStore((s) => s.connectionStatus);
   return useQuery<WorkItemLoopHistory>({
     queryKey: queryKeys.workItemLoop(workItemId ?? ''),
     queryFn: () => api.get(`/work-items/${workItemId}/loop`),
     enabled: !!workItemId,
-    refetchInterval: pollWhileBusy ? 2000 : false,
+    refetchInterval: connectionStatus === 'connected' ? false : pollWhileBusy ? 2000 : false,
   });
 }
 
 export function useWorkItemDeliverables(workItemId: string | null, pollWhileBusy = false) {
+  const connectionStatus = useAppStore((s) => s.connectionStatus);
   return useQuery<WorkItemDeliverables>({
     queryKey: queryKeys.workItemDeliverables(workItemId ?? ''),
     queryFn: () => api.get(`/work-items/${workItemId}/deliverables`),
     enabled: !!workItemId,
-    refetchInterval: pollWhileBusy ? 3000 : false,
+    refetchInterval: connectionStatus === 'connected' ? false : pollWhileBusy ? 3000 : false,
   });
 }
 
@@ -866,11 +864,13 @@ export function useCancelWorkItemLoop() {
 }
 
 export function useLoopJob(jobId: string | null) {
+  const connectionStatus = useAppStore((s) => s.connectionStatus);
   return useQuery<LoopJob>({
     queryKey: ['work-items', 'jobs', jobId ?? ''],
     queryFn: () => api.get(`/work-items/jobs/${jobId}`),
     enabled: !!jobId,
     refetchInterval: (query) => {
+      if (connectionStatus === 'connected') return false;
       const status = query.state.data?.status;
       return status === 'pending' || status === 'running' ? 1500 : false;
     },

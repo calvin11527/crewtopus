@@ -1,3 +1,7 @@
+/**
+ * Workflow templates live here. Execution is queued on the loop worker
+ * (`workflow_execution` jobs) — not a second in-memory runtime.
+ */
 import { getDatabase } from '../database';
 import type {
   Workflow,
@@ -15,6 +19,7 @@ import { buildContextScope } from './context-scope';
 import { executeOutboundPipeline } from './outbound-pipeline';
 import { getAgent, updateAgentStatus } from './agent-registry';
 import { incrementCounter } from '../metrics';
+import { enqueueWorkflowExecution } from './job-queue';
 
 interface WorkflowRow {
   id: string;
@@ -194,7 +199,7 @@ export function listExecutions(workflowId: string): WorkflowExecution[] {
   return rows.map(mapExecution);
 }
 
-/** Execute a workflow step-by-step through agent adapters. */
+/** Execute a workflow via the shared job queue (same worker as board loops). */
 export async function executeWorkflow(
   workflowId: string,
   options: ExecuteWorkflowOptions = {}
@@ -226,6 +231,54 @@ export async function executeWorkflow(
 
   updateWorkflow(workflowId, { status: 'active' });
 
+  enqueueWorkflowExecution(workflowId, {
+    executionId,
+    filePaths: options.filePaths,
+    basePath: options.basePath,
+    maxTokens: options.maxTokens,
+    workItemId: options.workItemId,
+    maxLoopIterations: options.maxLoopIterations,
+    autoLoop: options.autoLoop,
+  });
+
+  broadcast({
+    type: 'workflow:update',
+    payload: { executionId, workflowId, status: 'active', message: 'Workflow execution queued' },
+    timestamp: now(),
+  });
+
+  const { drainLoopQueue, isLoopWorkerRunning } = await import('./loop-worker');
+  if (!isLoopWorkerRunning()) {
+    await drainLoopQueue();
+  }
+
+  return getExecution(executionId) ?? execution;
+}
+
+/** Run a queued workflow execution (called by the loop worker). */
+export async function runQueuedWorkflowExecution(payload: {
+  executionId: string;
+  filePaths?: string[];
+  basePath?: string;
+  maxTokens?: number;
+  workItemId?: string;
+  maxLoopIterations?: number;
+  autoLoop?: boolean;
+}): Promise<void> {
+  const execution = getExecution(payload.executionId);
+  if (!execution) throw new Error('Workflow execution not found');
+  const workflow = getWorkflow(execution.workflowId);
+  if (!workflow) throw new Error('Workflow not found');
+
+  const options: ExecuteWorkflowOptions = {
+    filePaths: payload.filePaths,
+    basePath: payload.basePath,
+    maxTokens: payload.maxTokens,
+    workItemId: payload.workItemId,
+    maxLoopIterations: payload.maxLoopIterations,
+    autoLoop: payload.autoLoop,
+  };
+
   const contextScope = buildContextScope({
     filePaths: options.filePaths || [],
     basePath: options.basePath,
@@ -246,31 +299,26 @@ export async function executeWorkflow(
     filePaths: options.filePaths,
     executeOptions: options,
   };
-  activeExecutions.set(executionId, active);
+  activeExecutions.set(payload.executionId, active);
 
-  broadcast({
-    type: 'workflow:update',
-    payload: { executionId, workflowId, status: 'active', message: 'Workflow execution started' },
-    timestamp: now(),
-  });
-
-  runExecutionLoop(executionId).catch((err) => {
-    const ex = activeExecutions.get(executionId);
+  try {
+    await runExecutionLoop(payload.executionId);
+  } catch (err) {
+    const ex = activeExecutions.get(payload.executionId);
     if (ex) {
       ex.execution.status = 'failed';
       ex.execution.completedAt = now();
       persistExecution(ex.execution);
-      updateWorkflow(workflowId, { status: 'failed' });
+      updateWorkflow(workflow.id, { status: 'failed' });
       broadcast({
         type: 'workflow:update',
-        payload: { executionId, status: 'failed', error: (err as Error).message },
+        payload: { executionId: payload.executionId, status: 'failed', error: (err as Error).message },
         timestamp: now(),
       });
-      activeExecutions.delete(executionId);
+      activeExecutions.delete(payload.executionId);
     }
-  });
-
-  return execution;
+    throw err;
+  }
 }
 
 async function runExecutionLoop(executionId: string): Promise<void> {

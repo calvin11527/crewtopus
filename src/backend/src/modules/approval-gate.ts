@@ -11,32 +11,37 @@ interface ApprovalRow {
   loop_run_id: string | null;
   summary: string | null;
   context_scope: string;
+  context_hash: string | null;
   sensitivity_level: number;
   status: string;
   created_at: string;
   resolved_at: string | null;
+  consumed_at: string | null;
 }
 
 const APPROVAL_THRESHOLD: SensitivityLevel = 2;
 
 function mapApproval(row: ApprovalRow): ApprovalRequest {
+  const contextScope = parseJson<ContextScope>(row.context_scope, {
+    files: [],
+    diffs: [],
+    symbols: [],
+    maxTokens: 8000,
+    sensitivityLevel: 0,
+  });
   return {
     id: row.id,
     workflowId: row.workflow_id ?? undefined,
     workItemId: row.work_item_id ?? undefined,
     loopRunId: row.loop_run_id ?? undefined,
     summary: row.summary ?? undefined,
-    contextScope: parseJson<ContextScope>(row.context_scope, {
-      files: [],
-      diffs: [],
-      symbols: [],
-      maxTokens: 8000,
-      sensitivityLevel: 0,
-    }),
+    contextScope,
+    contextHash: row.context_hash ?? hashContext(contextScope),
     sensitivityLevel: row.sensitivity_level as SensitivityLevel,
     status: row.status as ApprovalStatus,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at ?? undefined,
+    consumedAt: row.consumed_at ?? undefined,
   };
 }
 
@@ -53,12 +58,13 @@ export function createApprovalRequest(
 ): ApprovalRequest {
   const id = generateId();
   const timestamp = now();
+  const contextHash = hashContext(contextScope);
 
   getDatabase()
     .prepare(
       `INSERT INTO approval_request
-       (id, workflow_id, work_item_id, loop_run_id, summary, context_scope, sensitivity_level, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+       (id, workflow_id, work_item_id, loop_run_id, summary, context_scope, context_hash, sensitivity_level, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
     )
     .run(
       id,
@@ -67,6 +73,7 @@ export function createApprovalRequest(
       options.loopRunId ?? null,
       options.summary ?? null,
       JSON.stringify(contextScope),
+      contextHash,
       contextScope.sensitivityLevel,
       timestamp
     );
@@ -78,6 +85,7 @@ export function createApprovalRequest(
     loopRunId: options.loopRunId,
     summary: options.summary,
     contextScope,
+    contextHash,
     sensitivityLevel: contextScope.sensitivityLevel as SensitivityLevel,
     status: 'pending',
     createdAt: timestamp,
@@ -156,11 +164,87 @@ export function modifyAndApprove(id: string, modifiedScope: ContextScope): Appro
   return { ...existing, contextScope: modifiedScope, status: 'modified', resolvedAt: timestamp };
 }
 
-/** Check if an approved request exists for a given context hash. */
+/** Check if an unconsumed approved request exists for a given context hash. */
 export function hasApprovedContext(contextHash: string): boolean {
-  const requests = listApprovalRequests('approved');
-  const modified = listApprovalRequests('modified');
-  return [...requests, ...modified].some((r) => hashContext(r.contextScope) === contextHash);
+  const rows = getDatabase()
+    .prepare(
+      `SELECT context_hash, context_scope FROM approval_request
+       WHERE status IN ('approved', 'modified') AND consumed_at IS NULL`
+    )
+    .all() as Array<{ context_hash: string | null; context_scope: string }>;
+  return rows.some((row) => {
+    if (row.context_hash) return row.context_hash === contextHash;
+    const scope = parseJson<ContextScope>(row.context_scope, {
+      files: [],
+      diffs: [],
+      symbols: [],
+      maxTokens: 8000,
+      sensitivityLevel: 0,
+    });
+    return hashContext(scope) === contextHash;
+  });
+}
+
+export class ApprovalBindingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApprovalBindingError';
+  }
+}
+
+/**
+ * Redeem an approved/modified request exactly once.
+ * Binds to work item (when either side has one) and the original context hash.
+ */
+export function consumeApprovedRequest(
+  id: string,
+  binding: { workItemId?: string; contextHash: string }
+): ApprovalRequest {
+  const db = getDatabase();
+  return db.transaction(() => {
+    const existing = getApprovalRequest(id);
+    if (!existing) {
+      throw new ApprovalBindingError(`Approval ${id} was not found`);
+    }
+    if (existing.status !== 'approved' && existing.status !== 'modified') {
+      throw new ApprovalBindingError(`Approval ${id} is not approved`);
+    }
+    if (existing.consumedAt) {
+      throw new ApprovalBindingError(`Approval ${id} has already been used`);
+    }
+
+    const approvalWorkItem = existing.workItemId;
+    const requestWorkItem = binding.workItemId;
+    if (approvalWorkItem && requestWorkItem && approvalWorkItem !== requestWorkItem) {
+      throw new ApprovalBindingError(
+        `Approval ${id} is bound to a different work item`
+      );
+    }
+    if (approvalWorkItem && !requestWorkItem) {
+      throw new ApprovalBindingError(`Approval ${id} requires work item ${approvalWorkItem}`);
+    }
+    if (!approvalWorkItem && requestWorkItem) {
+      throw new ApprovalBindingError(`Approval ${id} is not bound to work item ${requestWorkItem}`);
+    }
+
+    const storedHash = existing.contextHash ?? hashContext(existing.contextScope);
+    if (storedHash !== binding.contextHash) {
+      throw new ApprovalBindingError(`Approval ${id} does not match this context`);
+    }
+
+    const timestamp = now();
+    const updated = db
+      .prepare(
+        `UPDATE approval_request SET consumed_at = ?
+         WHERE id = ? AND consumed_at IS NULL AND status IN ('approved', 'modified')`
+      )
+      .run(timestamp, id);
+    if (updated.changes === 0) {
+      throw new ApprovalBindingError(`Approval ${id} has already been used`);
+    }
+
+    return { ...existing, consumedAt: timestamp };
+  })();
 }
 
 export class ApprovalRequiredError extends Error {

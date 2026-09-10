@@ -61,6 +61,8 @@ function summarizePipelineJobResult(result: PipelineResult): Record<string, unkn
 }
 let workerTimer: ReturnType<typeof setInterval> | null = null;
 let processing = false;
+let stopping = false;
+let inFlight: Promise<void> | null = null;
 
 async function processJob(job: LoopJob): Promise<void> {
   broadcast({
@@ -70,6 +72,53 @@ async function processJob(job: LoopJob): Promise<void> {
   });
 
   try {
+    if (job.jobType === 'workflow_execution') {
+      const payload = job.payload as {
+        executionId: string;
+        filePaths?: string[];
+        basePath?: string;
+        maxTokens?: number;
+        workItemId?: string;
+        maxLoopIterations?: number;
+        autoLoop?: boolean;
+      };
+      if (!payload.executionId) throw new Error('workflow_execution job missing executionId');
+      const { runQueuedWorkflowExecution } = await import('./workflow-engine');
+      await runQueuedWorkflowExecution(payload);
+      completeLoopJob(job.id, { executionId: payload.executionId, status: 'completed' });
+      broadcast({
+        type: 'loop:job',
+        payload: {
+          jobId: job.id,
+          workItemId: job.workItemId,
+          status: 'completed',
+          jobType: job.jobType,
+        },
+        timestamp: now(),
+      });
+      return;
+    }
+
+    if (job.jobType === 'supervisor_task') {
+      const payload = job.payload as {
+        taskId: string;
+        filePaths?: string[];
+        basePath?: string;
+        maxTokens?: number;
+        approvalId?: string;
+      };
+      if (!payload.taskId) throw new Error('supervisor_task job missing taskId');
+      const { runQueuedSupervisorTask } = await import('./supervisor');
+      await runQueuedSupervisorTask(payload);
+      completeLoopJob(job.id, { taskId: payload.taskId, status: 'completed' });
+      broadcast({
+        type: 'loop:job',
+        payload: { jobId: job.id, status: 'completed', jobType: job.jobType },
+        timestamp: now(),
+      });
+      return;
+    }
+
     if (job.jobType === 'work_item_agent') {
       const result = await runWorkItemAgent(job.workItemId!);
       completeLoopJob(job.id, result as unknown as Record<string, unknown>);
@@ -207,10 +256,10 @@ async function processJob(job: LoopJob): Promise<void> {
 }
 
 async function drainQueue(): Promise<void> {
-  if (processing) return;
+  if (processing || stopping) return;
   processing = true;
   try {
-    while (true) {
+    while (!stopping) {
       const job = claimNextPendingJob();
       if (!job) break;
       await processJob(job);
@@ -221,17 +270,41 @@ async function drainQueue(): Promise<void> {
   }
 }
 
-export function startLoopWorker(): void {
-  if (workerTimer) return;
-  workerTimer = setInterval(() => {
-    drainQueue().catch((err) => console.error('[LoopWorker]', err.message));
-  }, POLL_MS);
-  drainQueue().catch((err) => console.error('[LoopWorker]', err.message));
+function kickDrain(): void {
+  if (processing || stopping) return;
+  const run = drainQueue().catch((err) => console.error('[LoopWorker]', err.message));
+  inFlight = run.finally(() => {
+    if (inFlight === run) inFlight = null;
+  });
 }
 
-export function stopLoopWorker(): void {
+export function isLoopWorkerRunning(): boolean {
+  return workerTimer != null && !stopping;
+}
+
+/** Drain pending jobs on this process (used when the poller is not running, e.g. tests). */
+export async function drainLoopQueue(): Promise<void> {
+  await drainQueue();
+}
+
+export function startLoopWorker(): void {
+  if (workerTimer) return;
+  stopping = false;
+  workerTimer = setInterval(() => {
+    kickDrain();
+  }, POLL_MS);
+  kickDrain();
+}
+
+/** Stop polling and wait for the in-flight job to finish before closing SQLite. */
+export async function stopLoopWorker(): Promise<void> {
+  stopping = true;
   if (workerTimer) {
     clearInterval(workerTimer);
     workerTimer = null;
+  }
+  if (inFlight) {
+    await inFlight.catch(() => undefined);
+    inFlight = null;
   }
 }

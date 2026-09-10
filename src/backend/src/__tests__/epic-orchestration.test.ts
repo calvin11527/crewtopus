@@ -48,7 +48,7 @@ describe('Epic orchestration', () => {
 
   it('should run pipeline on each child and roll up epic to done', async () => {
     const bundle = createImprovementEpic();
-    const result = await runEpicOrchestration(bundle.epic.id, { maxIterations: 2 });
+    const result = await runEpicOrchestration(bundle.epic.id, { maxIterations: 2, demo: true });
 
     expect(result.childResults).toHaveLength(bundle.children.length);
     expect(result.childResults.every((r) => r.pipeline?.loopStatus === 'approved')).toBe(true);
@@ -64,9 +64,9 @@ describe('Epic orchestration', () => {
 
   it('should skip completed children on rerun', async () => {
     const bundle = createImprovementEpic();
-    await runEpicOrchestration(bundle.epic.id, { maxIterations: 2 });
+    await runEpicOrchestration(bundle.epic.id, { maxIterations: 2, demo: true });
 
-    const second = await runEpicOrchestration(bundle.epic.id, { maxIterations: 2 });
+    const second = await runEpicOrchestration(bundle.epic.id, { maxIterations: 2, demo: true });
     expect(second.childResults.every((r) => r.skipped)).toBe(true);
     expect(second.epic.status).toBe('done');
   });
@@ -100,6 +100,7 @@ describe('Epic orchestration', () => {
     const result = await runEpicOrchestration(bundle.epic.id, {
       maxIterations: 1,
       stopOnFailure: true,
+      demo: true,
     });
 
     expect(result.childResults.length).toBe(1);

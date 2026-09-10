@@ -6,6 +6,7 @@ import { getDatabase } from '../database';
 import {
   enqueueWorkItemPipeline,
   enqueueWorkItemAgent,
+  enqueueWorkflowExecution,
   getLoopJob,
   claimNextPendingJob,
   completeLoopJob,
@@ -22,15 +23,17 @@ import path from 'path';
 
 describe('Job Queue (M4)', () => {
   beforeEach(() => {
-    jest.spyOn(getAdapter('grok'), 'isAvailable').mockResolvedValue(false);
-    jest.spyOn(getAdapter('copilot'), 'isAvailable').mockResolvedValue(false);
-    jest.spyOn(getAdapter('mock'), 'execute').mockImplementation(async (input: AdapterInput): Promise<AdapterOutput> => {
+    const fakeExecute = async (input: AdapterInput): Promise<AdapterOutput> => {
       const capability = (input.config?.capability as string) || '';
       if (capability === 'review') {
         return { content: 'APPROVED\nLooks good.', tokenCount: 20, metadata: { adapter: 'mock' } };
       }
       return { content: '## Implementation', tokenCount: 15, metadata: { adapter: 'mock' } };
-    });
+    };
+    for (const type of ['mock', 'grok', 'copilot'] as const) {
+      jest.spyOn(getAdapter(type), 'isAvailable').mockResolvedValue(true);
+      jest.spyOn(getAdapter(type), 'execute').mockImplementation(fakeExecute);
+    }
   });
 
   afterEach(() => {
@@ -130,5 +133,13 @@ describe('Job Queue (M4)', () => {
     const updated = getWorkItem(item.id)!;
     expect(updated.status).toBe('todo');
     expect(updated.loopStatus).toBe('idle');
+  });
+
+  it('enqueues workflow executions on the same loop_job table', () => {
+    const job = enqueueWorkflowExecution('wf-1', { executionId: 'ex-1', autoLoop: true });
+    expect(job.jobType).toBe('workflow_execution');
+    expect(job.status).toBe('pending');
+    expect(job.payload.executionId).toBe('ex-1');
+    expect(claimNextPendingJob()?.id).toBe(job.id);
   });
 });

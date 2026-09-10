@@ -1,15 +1,19 @@
-import { listAgents, updateAgentConfig } from '../modules/agent-registry';
+import { getAgent, listAgents, updateAgentConfig } from '../modules/agent-registry';
 import { pickFailoverType, resolveOutboundAgentType, isAgentTypeBlocked } from '../modules/adapter-failover';
-import { logAuditEntry } from '../modules/audit-logger';
 import { calibrateAgentProviderUsage } from '../modules/agent-credits';
 
 describe('adapter-failover', () => {
   it('picks an alternate type when preferred is free', () => {
-    const next = pickFailoverType('grok', 'mock');
-    expect(next).toBe('mock');
+    const next = pickFailoverType('grok', 'copilot');
+    expect(next).toBe('copilot');
   });
 
-  it('auto-failovers when requested type is over SuperGrok 100%', () => {
+  it('does not pick mock unless allowMock is set', () => {
+    expect(pickFailoverType('grok', 'mock')).not.toBe('mock');
+    expect(pickFailoverType('grok', 'mock', { allowMock: true })).toBe('mock');
+  });
+
+  it('auto-failovers for this run without rewriting the agent type', () => {
     const grok = listAgents().find((a) => a.type === 'grok');
     expect(grok).toBeDefined();
     calibrateAgentProviderUsage(grok!.id, 100, {
@@ -18,14 +22,15 @@ describe('adapter-failover', () => {
     });
     expect(isAgentTypeBlocked('grok')).toBe(true);
 
-    updateAgentConfig(grok!.id, { preferredFailoverType: 'mock' });
+    updateAgentConfig(grok!.id, { preferredFailoverType: 'copilot' });
     const res = resolveOutboundAgentType({
       requestedType: 'grok',
       agentId: grok!.id,
       allowFailover: true,
     });
     expect(res.failedOver).toBe(true);
-    expect(res.agentType).toBe('mock');
+    expect(res.agentType).toBe('copilot');
+    expect(getAgent(grok!.id)?.type).toBe('grok');
   });
 
   it('does not failover when disabled', () => {

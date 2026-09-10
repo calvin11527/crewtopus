@@ -7,7 +7,13 @@ import { logWorkItemActivity } from './work-item-activity';
 
 
 export type LoopJobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-export type LoopJobType = 'work_item_pipeline' | 'work_item_agent' | 'story_ba' | 'story_pm';
+export type LoopJobType =
+  | 'work_item_pipeline'
+  | 'work_item_agent'
+  | 'story_ba'
+  | 'story_pm'
+  | 'workflow_execution'
+  | 'supervisor_task';
 
 export interface LoopJob {
   id: string;
@@ -78,6 +84,58 @@ export function updateQueueDepthGauge(): void {
   setGauge('agenthub_queue_depth', 'Pending loop jobs in queue', countJobsByStatus('pending'));
 }
 
+function insertLoopJob(
+  jobType: LoopJobType,
+  workItemId: string | null,
+  workflowId: string | null,
+  payload: Record<string, unknown>
+): LoopJob {
+  const id = generateId();
+  const timestamp = now();
+  getDatabase()
+    .prepare(
+      `INSERT INTO loop_job (id, work_item_id, workflow_id, job_type, status, payload, created_at)
+       VALUES (?, ?, ?, ?, 'pending', ?, ?)`
+    )
+    .run(id, workItemId, workflowId, jobType, JSON.stringify(payload), timestamp);
+
+  incrementCounter('agenthub_loop_jobs_enqueued_total', 'Loop jobs enqueued', { type: jobType });
+  updateQueueDepthGauge();
+  pushToRedis(id).catch(() => {
+    /* optional redis */
+  });
+  return getLoopJob(id)!;
+}
+
+/** Enqueue a saved workflow definition to run through the same worker as board loops. */
+export function enqueueWorkflowExecution(
+  workflowId: string,
+  payload: {
+    executionId: string;
+    filePaths?: string[];
+    basePath?: string;
+    maxTokens?: number;
+    workItemId?: string;
+    maxLoopIterations?: number;
+    autoLoop?: boolean;
+  }
+): LoopJob {
+  return insertLoopJob('workflow_execution', payload.workItemId ?? null, workflowId, payload);
+}
+
+/** Enqueue a frozen supervisor task so it still executes via the loop worker. */
+export function enqueueSupervisorTask(
+  taskId: string,
+  payload: {
+    filePaths?: string[];
+    basePath?: string;
+    maxTokens?: number;
+    approvalId?: string;
+  } = {}
+): LoopJob {
+  return insertLoopJob('supervisor_task', null, null, { taskId, ...payload });
+}
+
 /** Enqueue a work-item pipeline job (durable SQLite queue). */
 export function enqueueWorkItemPipeline(
   workItemId: string,
@@ -96,22 +154,7 @@ export function enqueueWorkItemPipeline(
     autoChainFix?: boolean;
   } = {}
 ): LoopJob {
-  const id = generateId();
-  const timestamp = now();
-
-  getDatabase()
-    .prepare(
-      `INSERT INTO loop_job (id, work_item_id, workflow_id, job_type, status, payload, created_at)
-       VALUES (?, ?, ?, 'work_item_pipeline', 'pending', ?, ?)`
-    )
-    .run(id, workItemId, workflowId, JSON.stringify(options), timestamp);
-
-  incrementCounter('agenthub_loop_jobs_enqueued_total', 'Loop jobs enqueued', { type: 'work_item_pipeline' });
-  updateQueueDepthGauge();
-
-  pushToRedis(id).catch(() => { /* optional redis */ });
-
-  return getLoopJob(id)!;
+  return insertLoopJob('work_item_pipeline', workItemId, workflowId, options);
 }
 
 /** Enqueue BA or PM lifecycle phase for a story. */
@@ -127,42 +170,12 @@ export function enqueueStoryLifecycleJob(
     orchestrator?: string;
   }
 ): LoopJob {
-  const id = generateId();
-  const timestamp = now();
-
-  getDatabase()
-    .prepare(
-      `INSERT INTO loop_job (id, work_item_id, workflow_id, job_type, status, payload, created_at)
-       VALUES (?, ?, NULL, ?, 'pending', ?, ?)`
-    )
-    .run(id, workItemId, jobType, JSON.stringify(payload), timestamp);
-
-  incrementCounter('agenthub_loop_jobs_enqueued_total', 'Loop jobs enqueued', { type: jobType });
-  updateQueueDepthGauge();
-
-  pushToRedis(id).catch(() => { /* optional redis */ });
-
-  return getLoopJob(id)!;
+  return insertLoopJob(jobType, workItemId, null, payload);
 }
 
 /** Enqueue a single-agent run (durable SQLite queue). */
 export function enqueueWorkItemAgent(workItemId: string): LoopJob {
-  const id = generateId();
-  const timestamp = now();
-
-  getDatabase()
-    .prepare(
-      `INSERT INTO loop_job (id, work_item_id, workflow_id, job_type, status, payload, created_at)
-       VALUES (?, ?, NULL, 'work_item_agent', 'pending', '{}', ?)`
-    )
-    .run(id, workItemId, timestamp);
-
-  incrementCounter('agenthub_loop_jobs_enqueued_total', 'Loop jobs enqueued', { type: 'work_item_agent' });
-  updateQueueDepthGauge();
-
-  pushToRedis(id).catch(() => { /* optional redis */ });
-
-  return getLoopJob(id)!;
+  return insertLoopJob('work_item_agent', workItemId, null, {});
 }
 
 export function getLoopJob(id: string): LoopJob | null {
@@ -194,25 +207,26 @@ export function hasActiveLoopJobForWorkItem(workItemId: string): boolean {
 }
 
 export function claimNextPendingJob(): LoopJob | null {
-  const row = getDatabase()
-    .prepare(
-      `SELECT * FROM loop_job WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1`
-    )
-    .get() as LoopJobRow | undefined;
+  const db = getDatabase();
+  const claim = db.transaction(() => {
+    const row = db
+      .prepare(`SELECT * FROM loop_job WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1`)
+      .get() as LoopJobRow | undefined;
+    if (!row) return null;
 
-  if (!row) return null;
+    const timestamp = now();
+    const updated = db
+      .prepare(
+        `UPDATE loop_job SET status = 'running', started_at = ?, worker_pid = ? WHERE id = ? AND status = 'pending'`
+      )
+      .run(timestamp, process.pid, row.id);
+    if (updated.changes === 0) return null;
+    return getLoopJob(row.id);
+  });
 
-  const timestamp = now();
-  const updated = getDatabase()
-    .prepare(
-      `UPDATE loop_job SET status = 'running', started_at = ?, worker_pid = ? WHERE id = ? AND status = 'pending'`
-    )
-    .run(timestamp, process.pid, row.id);
-
-  if (updated.changes === 0) return null;
-
-  updateQueueDepthGauge();
-  return getLoopJob(row.id);
+  const claimed = claim.immediate();
+  if (claimed) updateQueueDepthGauge();
+  return claimed;
 }
 
 export function completeLoopJob(

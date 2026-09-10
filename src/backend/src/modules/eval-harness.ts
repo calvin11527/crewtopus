@@ -6,6 +6,7 @@ import type { OnUnknownVerdict, WorkflowVerdictParser } from '../types';
 import type { WorkItem } from '../types';
 import { hasLinkedRepository, resolveWorkItemWorkDir } from './work-item-context';
 import { buildWorkDirCorpus, type WorkDirCorpus } from './fs-browse';
+import { collectGitDiff } from './loop-output';
 
 export type { WorkDirCorpus };
 export { buildWorkDirCorpus };
@@ -62,7 +63,13 @@ export function parseReviewVerdict(
   return 'unknown';
 }
 
-export type LoopEvalType = 'verdict_parse' | 'acceptance_criteria' | 'test_command' | 'file_exists' | 'custom';
+export type LoopEvalType =
+  | 'verdict_parse'
+  | 'acceptance_criteria'
+  | 'test_command'
+  | 'file_exists'
+  | 'git_diff'
+  | 'custom';
 
 export interface LoopEval {
   id: string;
@@ -404,10 +411,68 @@ function evalAcceptanceCriteria(evalDef: LoopEval, ctx: EvalContext): EvalResult
   };
 }
 
+export interface DetectedTestCommand {
+  command: string;
+  runner: 'npm' | 'pytest' | 'cargo' | 'go';
+}
+
+/** Infer the repo's test runner from lockfiles / manifests. Never runs user-supplied strings. */
+export function detectRepoTestCommand(repoRoot: string): DetectedTestCommand | null {
+  if (!repoRoot || !fs.existsSync(repoRoot)) return null;
+
+  const pkgPath = path.join(repoRoot, 'package.json');
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { scripts?: Record<string, string> };
+      if (pkg.scripts?.test) {
+        return { command: 'npm test', runner: 'npm' };
+      }
+    } catch {
+      /* ignore malformed package.json */
+    }
+  }
+
+  const pyMarkers = ['pytest.ini', 'conftest.py', 'tox.ini'];
+  if (pyMarkers.some((f) => fs.existsSync(path.join(repoRoot, f)))) {
+    return { command: 'python -m pytest -q', runner: 'pytest' };
+  }
+  const pyproject = path.join(repoRoot, 'pyproject.toml');
+  if (fs.existsSync(pyproject)) {
+    try {
+      const text = fs.readFileSync(pyproject, 'utf-8');
+      if (/\bpytest\b/i.test(text) || /\b\[tool\.pytest/i.test(text)) {
+        return { command: 'python -m pytest -q', runner: 'pytest' };
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const testsDir = path.join(repoRoot, 'tests');
+  if (fs.existsSync(testsDir)) {
+    try {
+      const names = fs.readdirSync(testsDir);
+      if (names.some((n) => n.startsWith('test_') && n.endsWith('.py'))) {
+        return { command: 'python -m pytest -q', runner: 'pytest' };
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (fs.existsSync(path.join(repoRoot, 'Cargo.toml'))) {
+    return { command: 'cargo test', runner: 'cargo' };
+  }
+  if (fs.existsSync(path.join(repoRoot, 'go.mod'))) {
+    return { command: 'go test ./...', runner: 'go' };
+  }
+
+  return null;
+}
+
 function evalTestCommand(evalDef: LoopEval, ctx: EvalContext): EvalResult {
-  const command = evalDef.config?.command as string;
   const skipIfNoRepo = evalDef.config?.skipIfNoRepo !== false;
   const useRepoRoot = evalDef.config?.useRepoRoot === true;
+  const detect = evalDef.config?.detect === true;
 
   let cwd = (evalDef.config?.cwd as string) || ctx.workDir || process.cwd();
   if (useRepoRoot && ctx.workItem) {
@@ -417,11 +482,26 @@ function evalTestCommand(evalDef: LoopEval, ctx: EvalContext): EvalResult {
         type: evalDef.type,
         passed: true,
         details: 'Skipped test_command: no linked workspace repository',
-        evidence: { command, skipped: true },
+        evidence: { skipped: true },
       };
     }
     const repoRoot = resolveWorkItemWorkDir(ctx.workItem);
     if (repoRoot) cwd = repoRoot;
+  }
+
+  let command = typeof evalDef.config?.command === 'string' ? evalDef.config.command : '';
+  if (detect || !command) {
+    const detected = detectRepoTestCommand(cwd);
+    if (!detected) {
+      return {
+        evalId: evalDef.id,
+        type: evalDef.type,
+        passed: true,
+        details: 'Skipped test_command: no npm/pytest/cargo/go test runner detected',
+        evidence: { cwd, skipped: true, detect: true },
+      };
+    }
+    command = detected.command;
   }
 
   if (!command) {
@@ -431,8 +511,9 @@ function evalTestCommand(evalDef: LoopEval, ctx: EvalContext): EvalResult {
     return { evalId: evalDef.id, type: evalDef.type, passed: false, details: `Working directory not found: ${cwd}` };
   }
 
+  const timeoutMs = Number(evalDef.config?.timeoutMs) || 120_000;
   try {
-    execSync(command, { cwd, encoding: 'utf-8', timeout: 60_000, stdio: 'pipe' });
+    execSync(command, { cwd, encoding: 'utf-8', timeout: timeoutMs, stdio: 'pipe' });
     return {
       evalId: evalDef.id,
       type: evalDef.type,
@@ -441,15 +522,76 @@ function evalTestCommand(evalDef: LoopEval, ctx: EvalContext): EvalResult {
       evidence: { command, cwd },
     };
   } catch (err) {
-    const error = err as { status?: number; stderr?: string; message?: string };
+    const error = err as { status?: number; stderr?: string; stdout?: string; message?: string };
     return {
       evalId: evalDef.id,
       type: evalDef.type,
       passed: false,
       details: `Command failed (exit ${error.status ?? '?'}): ${command}`,
-      evidence: { command, cwd, stderr: error.stderr?.slice(0, 500), message: error.message },
+      evidence: {
+        command,
+        cwd,
+        stderr: error.stderr?.slice(0, 500),
+        stdout: error.stdout?.slice(0, 300),
+        message: error.message,
+      },
     };
   }
+}
+
+function evalGitDiff(evalDef: LoopEval, ctx: EvalContext): EvalResult {
+  const skipIfNoRepo = evalDef.config?.skipIfNoRepo !== false;
+  const requireChanges = evalDef.config?.requireChanges === true;
+  let root = (evalDef.config?.cwd as string) || ctx.workDir;
+  if (ctx.workItem) {
+    if (!hasLinkedRepository(ctx.workItem) && skipIfNoRepo) {
+      return {
+        evalId: evalDef.id,
+        type: evalDef.type,
+        passed: true,
+        details: 'Skipped git_diff: no linked workspace repository',
+        evidence: { skipped: true },
+      };
+    }
+    root = resolveWorkItemWorkDir(ctx.workItem);
+  }
+
+  const diff = collectGitDiff(root);
+  if (!diff.hasRepo) {
+    return {
+      evalId: evalDef.id,
+      type: evalDef.type,
+      passed: skipIfNoRepo,
+      details: skipIfNoRepo ? 'Skipped git_diff: not a git repository' : 'Not a git repository',
+      evidence: { ...diff, skipped: skipIfNoRepo },
+    };
+  }
+
+  if (requireChanges && !diff.dirty) {
+    return {
+      evalId: evalDef.id,
+      type: evalDef.type,
+      passed: false,
+      details: 'Expected a git diff (implementation produced no changes vs HEAD)',
+      evidence: { ...diff },
+    };
+  }
+
+  return {
+    evalId: evalDef.id,
+    type: evalDef.type,
+    passed: true,
+    details: diff.dirty
+      ? `Git diff: ${diff.changedFiles.length} file(s) changed`
+      : 'Git working tree clean vs HEAD',
+    evidence: {
+      repoRoot: diff.repoRoot,
+      dirty: diff.dirty,
+      stat: diff.stat.slice(0, 1000),
+      changedFiles: diff.changedFiles.slice(0, 40),
+      diffPreview: diff.diffPreview.slice(0, 2000),
+    },
+  };
 }
 
 /** Run one eval definition against the current loop context. */
@@ -463,6 +605,8 @@ export function runEval(evalDef: LoopEval, ctx: EvalContext): EvalResult {
       return evalAcceptanceCriteria(evalDef, ctx);
     case 'test_command':
       return evalTestCommand(evalDef, ctx);
+    case 'git_diff':
+      return evalGitDiff(evalDef, ctx);
     default:
       return {
         evalId: evalDef.id,
@@ -482,25 +626,24 @@ export function allEvalsPassed(results: EvalResult[]): boolean {
   return results.length > 0 && results.every((r) => r.passed);
 }
 
-/** Default eval set for Grok→Copilot work-item loops (verdict + acceptance + optional tests). */
+/** Default eval set: review verdict + repo test runner + git diff. Keyword AC is not a gate. */
 export function defaultWorkItemLoopEvals(workItem?: WorkItem, options?: { demo?: boolean }): LoopEval[] {
   // Demo / mock: verdict only so first-run always lands on approved when review says APPROVED.
   if (options?.demo) {
     return [{ id: 'verdict', type: 'verdict_parse', config: { required: 'approved' } }];
   }
 
-  const evals: LoopEval[] = [
+  return [
     { id: 'verdict', type: 'verdict_parse', config: { required: 'approved' } },
-    { id: 'acceptance', type: 'acceptance_criteria' },
-  ];
-
-  if (workItem && resolveWorkItemWorkDir(workItem)) {
-    evals.push({
+    {
       id: 'tests',
       type: 'test_command',
-      config: { command: 'npm test', useRepoRoot: true, skipIfNoRepo: true },
-    });
-  }
-
-  return evals;
+      config: { detect: true, useRepoRoot: true, skipIfNoRepo: true },
+    },
+    {
+      id: 'git_diff',
+      type: 'git_diff',
+      config: { skipIfNoRepo: true, requireChanges: false },
+    },
+  ];
 }

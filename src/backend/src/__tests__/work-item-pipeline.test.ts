@@ -27,10 +27,7 @@ describe('Work Item Pipeline (Grok → Copilot)', () => {
 
   beforeEach(() => {
     reviewCallCount = 0;
-    jest.spyOn(getAdapter('grok'), 'isAvailable').mockResolvedValue(false);
-    jest.spyOn(getAdapter('copilot'), 'isAvailable').mockResolvedValue(false);
-
-    jest.spyOn(getAdapter('mock'), 'execute').mockImplementation(async (input: AdapterInput): Promise<AdapterOutput> => {
+    const fakeExecute = async (input: AdapterInput): Promise<AdapterOutput> => {
       const capability = (input.config?.capability as string) || '';
       if (capability === 'review') {
         reviewCallCount++;
@@ -52,7 +49,11 @@ describe('Work Item Pipeline (Grok → Copilot)', () => {
         tokenCount: 40,
         metadata: { adapter: 'mock', capability },
       };
-    });
+    };
+    for (const type of ['mock', 'grok', 'copilot'] as const) {
+      jest.spyOn(getAdapter(type), 'isAvailable').mockResolvedValue(true);
+      jest.spyOn(getAdapter(type), 'execute').mockImplementation(fakeExecute);
+    }
   });
 
   afterEach(() => {
@@ -148,7 +149,7 @@ describe('Work Item Pipeline (Grok → Copilot)', () => {
   });
 
   it('should escalate when max iterations exhausted', async () => {
-    jest.spyOn(getAdapter('mock'), 'execute').mockImplementation(async (input: AdapterInput): Promise<AdapterOutput> => {
+    const stuck = async (input: AdapterInput): Promise<AdapterOutput> => {
       const capability = (input.config?.capability as string) || '';
       if (capability === 'review') {
         return {
@@ -161,7 +162,10 @@ describe('Work Item Pipeline (Grok → Copilot)', () => {
         return { content: 'PASS', tokenCount: 10, metadata: { adapter: 'mock' } };
       }
       return { content: '## Implementation', tokenCount: 20, metadata: { adapter: 'mock' } };
-    });
+    };
+    for (const type of ['mock', 'grok', 'copilot'] as const) {
+      jest.spyOn(getAdapter(type), 'execute').mockImplementation(stuck);
+    }
 
     const item = createWorkItem({
       type: 'task',

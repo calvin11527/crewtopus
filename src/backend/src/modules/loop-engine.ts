@@ -41,6 +41,7 @@ import {
   cancelLoopRun,
 } from './loop-run';
 import { incrementCounter } from '../metrics';
+import { publishLoopOutput } from './loop-output';
 import { isLoopCancelled as isLoopCancelRequested, clearLoopCancel } from './loop-cancel';
 import { updateAgentStatus } from './agent-registry';
 
@@ -329,6 +330,7 @@ async function runLoopAgentStep(input: {
   loopIteration: number;
   executionLabel: string;
   deltaSinceMs?: number;
+  demo?: boolean;
 }): Promise<{ pipeline: Awaited<ReturnType<typeof import('./outbound-pipeline').executeOutboundPipeline>>; filesCreated: string[] }> {
   const { executeOutboundPipeline } = await import('./outbound-pipeline');
   const resolvedAgentId = input.agentId ?? input.item?.assignedAgentId;
@@ -427,6 +429,8 @@ async function runLoopAgentStep(input: {
       filePaths: auditFilePaths,
       workspaceId: input.item?.workspaceId,
       contextSummary,
+      demo: input.demo,
+      allowMockFallback: input.demo === true,
     });
     if (resolvedAgentId) updateAgentStatus(resolvedAgentId, 'idle');
   } catch (err) {
@@ -455,7 +459,7 @@ async function runLoopAgentStep(input: {
       auditId: pipeline.auditId,
       metadata: {
         pipelinePhase: input.phase,
-        content: pipeline.content,
+        contentLength: pipeline.content.length,
         agentType: pipeline.agentType,
         tokenCount: pipeline.tokenCount,
         workDir: input.workDir ?? null,
@@ -761,6 +765,7 @@ export async function runAgentLoop(input: {
           loopIteration: iteration,
           executionLabel,
           deltaSinceMs,
+          demo: options.demo,
         });
 
         iterationPriorOutputs.push(stepResult.content);
@@ -911,6 +916,11 @@ export async function runAgentLoop(input: {
         if (item) {
           updateWorkItem(workItemId!, { status: 'done', loopStatus: 'approved', loopIteration: iteration });
           emitLoopUpdate(workItemId!, iteration, maxIterations, 'approved');
+          try {
+            publishLoopOutput(getWorkItem(workItemId!) ?? item, lastEvalResults);
+          } catch {
+            /* artifact publish is best-effort */
+          }
         }
         completeLoopRun(loopRunId, { iteration, verdict: reviewVerdict, loopStatus: 'approved' });
         break;

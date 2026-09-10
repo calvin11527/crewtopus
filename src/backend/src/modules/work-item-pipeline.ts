@@ -66,7 +66,8 @@ function grokCopilotWorkflowDefinition(): WorkflowDefinition {
         verdictParser: 'approved_changes_requested',
         evals: [
           { id: 'verdict', type: 'verdict_parse', config: { required: 'approved' } },
-          { id: 'acceptance', type: 'acceptance_criteria' },
+          { id: 'tests', type: 'test_command', config: { detect: true, useRepoRoot: true, skipIfNoRepo: true } },
+          { id: 'git_diff', type: 'git_diff', config: { skipIfNoRepo: true } },
         ],
         steps: [
           {

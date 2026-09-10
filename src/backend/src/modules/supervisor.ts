@@ -1,3 +1,7 @@
+/**
+ * Frozen supervisor runtime: task CRUD + agent selection remain.
+ * Execution is queued on the loop worker (`supervisor_task` jobs), not an in-process adapter path.
+ */
 import { getDatabase } from '../database';
 import { generateId, now } from '../utils/helpers';
 import { findAgentsByCapability } from './capability-registry';
@@ -6,6 +10,7 @@ import { broadcast } from '../websocket';
 import { buildContextScope } from './context-scope';
 import { executeOutboundPipeline, PrivacyBlockedError } from './outbound-pipeline';
 import { ApprovalRequiredError } from './approval-gate';
+import { enqueueSupervisorTask } from './job-queue';
 import type { Agent, AgentType } from '../types';
 
 export type SupervisorTaskStatus = 'queued' | 'assigned' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -226,41 +231,16 @@ class SupervisorEngine {
     task.status = 'running';
     task.updatedAt = now();
     persistTask(task);
-    this.emitTaskUpdate(task, 'Task execution started');
+    this.emitTaskUpdate(task, 'Task execution queued');
 
-    try {
-      const contextScope = buildContextScope({
-        filePaths: options.filePaths || [],
-        basePath: options.basePath,
-        maxTokens: options.maxTokens,
-      });
+    enqueueSupervisorTask(taskId, options);
 
-      const result = await this.executeWithAdapter(
-        task.assignedAgentType,
-        task.description,
-        contextScope,
-        task.capability,
-        {
-          agentId: task.assignedAgentId,
-          workspaceId: task.workspaceId,
-          filePaths: options.filePaths,
-          basePath: options.basePath,
-          approvalId: options.approvalId,
-          task: task.description,
-        }
-      );
-
-      return this.completeTask(taskId, result);
-    } catch (err) {
-      if (err instanceof ApprovalRequiredError) {
-        task.status = 'assigned';
-        task.updatedAt = now();
-        persistTask(task);
-        this.emitTaskUpdate(task, err.message);
-        return task;
-      }
-      return this.failTask(taskId, (err as Error).message);
+    const { drainLoopQueue, isLoopWorkerRunning } = await import('./loop-worker');
+    if (!isLoopWorkerRunning()) {
+      await drainLoopQueue();
     }
+
+    return loadTask(taskId);
   }
 
   async executeWithAdapter(
@@ -393,3 +373,62 @@ class SupervisorEngine {
 }
 
 export const supervisor = new SupervisorEngine();
+
+/** Execute a queued supervisor task (loop worker). */
+export async function runQueuedSupervisorTask(payload: {
+  taskId: string;
+  filePaths?: string[];
+  basePath?: string;
+  maxTokens?: number;
+  approvalId?: string;
+}): Promise<void> {
+  const task = supervisor.getTask(payload.taskId);
+  if (!task || !task.assignedAgentType) {
+    throw new Error('Supervisor task not found or not assigned');
+  }
+
+  try {
+    const contextScope = buildContextScope({
+      filePaths: payload.filePaths || [],
+      basePath: payload.basePath,
+      maxTokens: payload.maxTokens,
+    });
+    const result = await supervisor.executeWithAdapter(
+      task.assignedAgentType,
+      task.description,
+      contextScope,
+      task.capability,
+      {
+        agentId: task.assignedAgentId,
+        workspaceId: task.workspaceId,
+        filePaths: payload.filePaths,
+        basePath: payload.basePath,
+        approvalId: payload.approvalId,
+        task: task.description,
+      }
+    );
+    supervisor.completeTask(payload.taskId, result);
+  } catch (err) {
+    if (err instanceof ApprovalRequiredError) {
+      const current = supervisor.getTask(payload.taskId);
+      if (current) {
+        current.status = 'assigned';
+        current.updatedAt = now();
+        persistTask(current);
+        broadcast({
+          type: 'workflow:update',
+          payload: {
+            taskId: current.id,
+            status: current.status,
+            message: err.message,
+            agentId: current.assignedAgentId,
+          },
+          timestamp: now(),
+        });
+      }
+      return;
+    }
+    supervisor.failTask(payload.taskId, (err as Error).message);
+    throw err;
+  }
+}

@@ -182,7 +182,13 @@ export type WorkflowLoopOnExhausted = 'escalate' | 'fail' | 'human_approval';
 export type WorkflowVerdictParser = 'approved_changes_requested' | 'custom_regex' | 'json_block';
 export type OnUnknownVerdict = 'escalate' | 'retry' | 'treat_as_changes_requested';
 
-export type LoopEvalType = 'verdict_parse' | 'acceptance_criteria' | 'test_command' | 'file_exists' | 'custom';
+export type LoopEvalType =
+  | 'verdict_parse'
+  | 'acceptance_criteria'
+  | 'test_command'
+  | 'file_exists'
+  | 'git_diff'
+  | 'custom';
 
 export interface LoopEval {
   id: string;
@@ -279,10 +285,14 @@ export interface ApprovalRequest {
   loopRunId?: string;
   summary?: string;
   contextScope: ContextScope;
+  /** Hash of the scope recorded at request creation (unchanged by modify-and-approve). */
+  contextHash?: string;
   sensitivityLevel: SensitivityLevel;
   status: ApprovalStatus;
   createdAt: string;
   resolvedAt?: string;
+  /** Set when the approval is redeemed by an outbound run (single use). */
+  consumedAt?: string;
 }
 
 /** Retry policy for outbound pipeline transient failures. */

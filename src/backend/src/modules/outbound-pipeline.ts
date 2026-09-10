@@ -8,7 +8,7 @@ import { runPrivacyGuard } from './privacy-guard';
 import {
   requiresApproval,
   createApprovalRequest,
-  getApprovalRequest,
+  consumeApprovedRequest,
   ApprovalRequiredError,
 } from './approval-gate';
 import { logAuditEntry } from './audit-logger';
@@ -54,6 +54,9 @@ export interface OutboundRequest {
   loopIteration?: number;
   retryPolicy?: RetryPolicy;
   contextSummary?: ContextSummary;
+  /** Explicit demo / mock-fallback opt-in. Mock is never used silently. */
+  demo?: boolean;
+  allowMockFallback?: boolean;
 }
 
 export class AgentUnavailableError extends Error {
@@ -102,6 +105,19 @@ function previewAuditContent(content: string): { preview: string; contentLength:
     preview: `${content.slice(0, AUDIT_CONTENT_PREVIEW_CHARS)}\n… [truncated]`,
     contentLength: content.length,
   };
+}
+
+/** Mock adapters are used only when requested, or when a demo flag / env opt-in is set. */
+export function isMockFallbackAllowed(request: {
+  agentType: AgentType;
+  demo?: boolean;
+  allowMockFallback?: boolean;
+}): boolean {
+  if (request.agentType === 'mock') return true;
+  if (request.allowMockFallback === true || request.demo === true) return true;
+  if (process.env.AGENTHUB_ALLOW_MOCK_FALLBACK === 'true') return true;
+  if (process.env.AGENTHUB_DISABLE_MOCK_FALLBACK === 'true') return false;
+  return false;
 }
 
 function resolvePermissionMode(
@@ -157,11 +173,14 @@ async function executeAdapterOnce(
  * All outbound agent requests must pass through this pipeline.
  */
 export async function executeOutboundPipeline(request: OutboundRequest): Promise<OutboundResult> {
+  const allowMock = isMockFallbackAllowed(request);
+  const pipelineStartedAt = Date.now();
   const failover = resolveOutboundAgentType({
     requestedType: request.agentType,
     agentId: request.agentId,
     workItemId: request.workItemId,
     allowFailover: process.env.CREWTOPUS_DISABLE_AUTO_FAILOVER !== 'true',
+    allowMock,
   });
   // Mutate request type when failover wins so the rest of the pipeline is consistent.
   if (failover.failedOver) {
@@ -218,10 +237,10 @@ export async function executeOutboundPipeline(request: OutboundRequest): Promise
 
   if (requiresApproval(effectiveScope.sensitivityLevel as 0 | 1 | 2 | 3) || privacy.requiresApproval) {
     if (request.approvalId) {
-      const approval = getApprovalRequest(request.approvalId);
-      if (!approval || (approval.status !== 'approved' && approval.status !== 'modified')) {
-        throw new Error(`Approval ${request.approvalId} is not approved`);
-      }
+      const approval = consumeApprovedRequest(request.approvalId, {
+        workItemId: request.workItemId,
+        contextHash: hashContext(effectiveScope),
+      });
       if (approval.status === 'modified') {
         effectiveScope = approval.contextScope;
       }
@@ -242,7 +261,7 @@ export async function executeOutboundPipeline(request: OutboundRequest): Promise
 
   const adapter = getAdapter(effectiveType);
   if (!(await adapter.isAvailable())) {
-    if (process.env.AGENTHUB_DISABLE_MOCK_FALLBACK === 'true') {
+    if (!allowMock || requestedAgentType === 'mock') {
       throw new AgentUnavailableError(requestedAgentType);
     }
     fallbackFrom = requestedAgentType;
@@ -256,6 +275,7 @@ export async function executeOutboundPipeline(request: OutboundRequest): Promise
         fallbackAgent: 'mock',
         workItemId: request.workItemId,
         task: request.task,
+        demo: true,
       },
       timestamp: now(),
     });
@@ -326,12 +346,11 @@ export async function executeOutboundPipeline(request: OutboundRequest): Promise
     });
   }
 
-  const startMs = Date.now();
   incrementCounter(
     'agenthub_outbound_duration_seconds',
     'Outbound pipeline duration (counter proxy)',
     { agent: effectiveType, phase: request.pipelinePhase || 'unknown' },
-    Math.max(1, Math.round((Date.now() - startMs) / 1000))
+    Math.max(1, Math.round((Date.now() - pipelineStartedAt) / 1000))
   );
 
   const auditId = generateId();

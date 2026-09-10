@@ -74,9 +74,7 @@ describe('Workflow Engine Integration', () => {
 
   it('should execute workflow loop until approved verdict', async () => {
     let reviewCallCount = 0;
-    jest.spyOn(getAdapter('grok'), 'isAvailable').mockResolvedValue(false);
-    jest.spyOn(getAdapter('copilot'), 'isAvailable').mockResolvedValue(false);
-    jest.spyOn(getAdapter('mock'), 'execute').mockImplementation(async (input: AdapterInput): Promise<AdapterOutput> => {
+    const fakeExecute = async (input: AdapterInput): Promise<AdapterOutput> => {
       const capability = (input.config?.capability as string) || '';
       if (capability === 'review') {
         reviewCallCount++;
@@ -90,7 +88,11 @@ describe('Workflow Engine Integration', () => {
         return { content: 'PASS\nChecks ok.', tokenCount: 10, metadata: { adapter: 'mock' } };
       }
       return { content: '## Implementation\nDone.', tokenCount: 15, metadata: { adapter: 'mock' } };
-    });
+    };
+    for (const type of ['mock', 'grok', 'copilot'] as const) {
+      jest.spyOn(getAdapter(type), 'isAvailable').mockResolvedValue(true);
+      jest.spyOn(getAdapter(type), 'execute').mockImplementation(fakeExecute);
+    }
 
     const workflowId = ensureGrokCopilotWorkflow();
     const execution = await executeWorkflow(workflowId, { autoLoop: true, maxLoopIterations: 3 });
