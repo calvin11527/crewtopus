@@ -3,9 +3,14 @@ import os from 'os';
 import path from 'path';
 import { createWorkspace, addRepository } from '../modules/workspace';
 import { createWorkItem } from '../modules/work-items';
+import { execFileSync } from 'child_process';
 import {
+  buildWorkItemContextGroups,
   buildWorkItemContextScope,
+  collectAcLinkedFiles,
+  collectGitChangedFiles,
   collectRepoContextFiles,
+  extractContextFileHints,
   listWorkDirFilePaths,
   matchContextGlob,
   resolveWorkItemContextPaths,
@@ -225,6 +230,70 @@ describe('Work Item Context (M3)', () => {
     const privacy = runPrivacyGuard(scope, 'grok', auditFilePaths, basePath, workspace.id);
     expect(privacy.passed).toBe(true);
     expect(privacy.blockedReasons.join('; ')).not.toContain('.env.example');
+
+    fs.rmSync(repoDir, { recursive: true, force: true });
+  });
+
+  it('lists nested work-dir artifacts, not only the top level', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-nested-'));
+    fs.mkdirSync(path.join(tmpDir, 'out', 'notes'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'out', 'notes', 'LOOP_OUTPUT.md'), '# loop');
+    expect(listWorkDirFilePaths(tmpDir).some((f) => f.endsWith('LOOP_OUTPUT.md'))).toBe(true);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('extracts file hints from acceptance criteria', () => {
+    const hints = extractContextFileHints(
+      'Update `src/deep/TargetFile.ts` and MarketTrendDesk for the dashboard'
+    );
+    expect(hints.some((h) => h.includes('TargetFile.ts'))).toBe(true);
+    expect(hints).toEqual(expect.arrayContaining(['MarketTrendDesk']));
+  });
+
+  it('packs AC-linked files that sit deeper than the repo walk', () => {
+    const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-ac-deep-'));
+    const deep = path.join(repoDir, 'src', 'deep', 'a', 'b', 'c');
+    fs.mkdirSync(deep, { recursive: true });
+    const target = path.join(deep, 'TargetFile.ts');
+    fs.writeFileSync(target, 'export const target = 1;\n');
+    fs.writeFileSync(path.join(repoDir, 'README.md'), '# demo');
+
+    const workspace = createWorkspace('Deep WS', undefined, {
+      contextGlobs: ['*.ts', '*.md'],
+      contextMaxFiles: 4,
+    });
+    addRepository(workspace.id, 'demo', repoDir);
+    const item = createWorkItem({
+      type: 'task',
+      title: 'Fix TargetFile.ts',
+      workspaceId: workspace.id,
+      assignedAgentType: 'mock',
+      acceptanceCriteria: ['Update `src/deep/a/b/c/TargetFile.ts`'],
+    });
+
+    expect(collectAcLinkedFiles(item, repoDir).some((f) => f.endsWith('TargetFile.ts'))).toBe(true);
+    const { groups } = buildWorkItemContextGroups(item);
+    const acGroup = groups.find((g) => g.label === 'ac-linked');
+    expect(acGroup?.filePaths.some((f) => f.endsWith('TargetFile.ts'))).toBe(true);
+
+    fs.rmSync(repoDir, { recursive: true, force: true });
+  });
+
+  it('packs git-changed files even when they are not in the shallow walk', () => {
+    const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-git-ctx-'));
+    const deep = path.join(repoDir, 'src', 'deep', 'a', 'b', 'c');
+    fs.mkdirSync(deep, { recursive: true });
+    execFileSync('git', ['init'], { cwd: repoDir, stdio: 'pipe' });
+    execFileSync(
+      'git',
+      ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '--allow-empty', '-m', 'init'],
+      { cwd: repoDir, stdio: 'pipe' }
+    );
+    const changed = path.join(deep, 'Changed.ts');
+    fs.writeFileSync(changed, 'export const changed = 1;\n');
+
+    const files = collectGitChangedFiles(repoDir);
+    expect(files.some((f) => f.endsWith('Changed.ts'))).toBe(true);
 
     fs.rmSync(repoDir, { recursive: true, force: true });
   });

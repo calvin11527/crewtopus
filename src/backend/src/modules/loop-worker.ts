@@ -29,6 +29,13 @@ import { continueFullLifecycleChain } from './full-lifecycle';
 
 const POLL_MS = Number(process.env.AGENTHUB_JOB_POLL_MS) || 500;
 
+/** Concurrent jobs in this process (1–4). One running job per work item is enforced at claim. */
+export function resolveJobConcurrency(): number {
+  const raw = Number(process.env.AGENTHUB_JOB_CONCURRENCY ?? process.env.CREWTOPUS_JOB_CONCURRENCY ?? 3);
+  if (!Number.isFinite(raw)) return 3;
+  return Math.min(4, Math.max(1, Math.floor(raw)));
+}
+
 /** Store compact job results so loop_job rows do not retain full agent transcripts. */
 function summarizePipelineJobResult(result: PipelineResult): Record<string, unknown> {
   return {
@@ -258,12 +265,28 @@ async function processJob(job: LoopJob): Promise<void> {
 async function drainQueue(): Promise<void> {
   if (processing || stopping) return;
   processing = true;
+  const running = new Set<Promise<void>>();
   try {
-    while (!stopping) {
+    const take = (): boolean => {
+      if (stopping || running.size >= resolveJobConcurrency()) return false;
       const job = claimNextPendingJob();
-      if (!job) break;
-      await processJob(job);
+      if (!job) return false;
+      let run!: Promise<void>;
+      run = processJob(job).finally(() => {
+        running.delete(run);
+      });
+      running.add(run);
+      return true;
+    };
+
+    while (!stopping) {
+      while (take()) {
+        /* fill the worker slots */
+      }
+      if (running.size === 0) break;
+      await Promise.race(running);
     }
+    await Promise.allSettled([...running]);
   } finally {
     processing = false;
     updateQueueDepthGauge();

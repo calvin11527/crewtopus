@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { execFileSync } from 'child_process';
 import type { ContextScope, WorkItem } from '../types';
 import {
   buildContextScope,
@@ -19,9 +20,12 @@ import { resolveWithinRoot } from '../utils/safe-path';
 
 export { isExcludedContextPath } from './context-path-filters';
 
-const DEFAULT_CONTEXT_GLOBS = ['*.ts', '*.tsx', '*.js', '*.jsx', '*.md', '*.json'];
-const DEFAULT_MAX_REPO_FILES = 20;
-const MAX_WALK_DEPTH = 4;
+const DEFAULT_CONTEXT_GLOBS = ['*.ts', '*.tsx', '*.js', '*.jsx', '*.py', '*.go', '*.rs', '*.md', '*.json'];
+const DEFAULT_MAX_REPO_FILES = 30;
+const MAX_WALK_DEPTH = 6;
+const MAX_GIT_CHANGED_FILES = 40;
+const MAX_AC_LINKED_FILES = 24;
+const MAX_WORKDIR_FILES = 80;
 
 /** Parse .agenthubignore (gitignore-style) from a repo root. */
 export function parseAgenthubIgnore(repoRoot: string): string[] {
@@ -92,21 +96,145 @@ export function collectRepoContextFiles(
   return results;
 }
 
-/** List absolute paths of files in a work directory. */
-export function listWorkDirFilePaths(workDir?: string): string[] {
-  if (!workDir || !fs.existsSync(workDir)) return [];
+/** List absolute paths of files in a work directory (recursive, capped). */
+export function listWorkDirFilePaths(workDir?: string, depth = 0, maxFiles = MAX_WORKDIR_FILES): string[] {
+  if (!workDir || !fs.existsSync(workDir) || depth > MAX_WALK_DEPTH) return [];
   const out: string[] = [];
-  for (const name of fs.readdirSync(workDir)) {
-    if (isExcludedContextFilename(name)) continue;
-    if (name.includes('/') || name.includes('\\') || name.includes('..')) continue;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(workDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  for (const entry of entries) {
+    if (out.length >= maxFiles) break;
+    if (entry.name.startsWith('._')) continue;
+    if (entry.name.includes('..') || entry.name.includes('/') || entry.name.includes('\\')) continue;
+    if (isExcludedContextFilename(entry.name)) continue;
+    let full: string;
     try {
-      const full = resolveWithinRoot(workDir, name);
-      if (fs.statSync(full).isFile()) out.push(full);
+      full = resolveWithinRoot(workDir, entry.name);
     } catch {
-      /* skip */
+      continue;
+    }
+    if (entry.isDirectory()) {
+      if (entry.name.startsWith('.') || CONTEXT_DIR_EXCLUSIONS.has(entry.name)) continue;
+      out.push(...listWorkDirFilePaths(full, depth + 1, maxFiles - out.length));
+    } else if (entry.isFile()) {
+      out.push(full);
     }
   }
   return out;
+}
+
+function gitNameOnly(repoRoot: string, args: string[]): string[] {
+  try {
+    const out = execFileSync('git', ['-C', repoRoot, ...args], {
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).toString();
+    return out
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function resolveRepoFile(repoRoot: string, rel: string): string | null {
+  const parts = rel.split(/[/\\]/).filter((p) => p && p !== '.' && p !== '..');
+  if (parts.length === 0) return null;
+  try {
+    const full = resolveWithinRoot(repoRoot, ...parts);
+    if (fs.existsSync(full) && fs.statSync(full).isFile() && !isExcludedContextPath(full)) {
+      return full;
+    }
+  } catch {
+    /* skip */
+  }
+  return null;
+}
+
+/** Changed / untracked files in a git working tree (absolute paths). */
+export function collectGitChangedFiles(repoRoot: string, maxFiles = MAX_GIT_CHANGED_FILES): string[] {
+  if (!repoRoot || !fs.existsSync(path.join(repoRoot, '.git'))) return [];
+  const names = new Set<string>([
+    ...gitNameOnly(repoRoot, ['diff', '--name-only', 'HEAD']),
+    ...gitNameOnly(repoRoot, ['diff', '--name-only', '--cached']),
+    ...gitNameOnly(repoRoot, ['ls-files', '--others', '--exclude-standard']),
+  ]);
+  const out: string[] = [];
+  for (const rel of names) {
+    if (out.length >= maxFiles) break;
+    const full = resolveRepoFile(repoRoot, rel);
+    if (full) out.push(full);
+  }
+  return out;
+}
+
+/** File-like tokens from title, description, and acceptance criteria. */
+export function extractContextFileHints(text: string): string[] {
+  const hints = new Set<string>();
+  for (const match of text.matchAll(/`([^`]+)`/g)) {
+    const value = match[1].trim();
+    if (value.includes('.') || value.includes('/') || value.includes('\\')) hints.add(value);
+  }
+  for (const match of text.matchAll(/\b[\w./-]{1,80}\.[a-z][a-z0-9]{0,5}\b/gi)) {
+    hints.add(match[0]);
+  }
+  for (const word of text.split(/[^A-Za-z0-9]+/)) {
+    if (word.length < 3 || word.length > 64) continue;
+    if (word[0] < 'A' || word[0] > 'Z') continue;
+    if (!/[a-z]/.test(word) || !/[a-z][A-Z]/.test(word)) continue;
+    hints.add(word);
+  }
+  return [...hints];
+}
+
+/** Files named or pathed in the work item, even when they sit deeper than the repo walk. */
+export function collectAcLinkedFiles(
+  workItem: WorkItem,
+  repoRoot: string,
+  maxFiles = MAX_AC_LINKED_FILES
+): string[] {
+  if (!repoRoot || !fs.existsSync(repoRoot)) return [];
+  const blob = [workItem.title, workItem.description ?? '', ...(workItem.acceptanceCriteria ?? [])].join('\n');
+  const hints = extractContextFileHints(blob);
+  if (hints.length === 0) return [];
+
+  const found: string[] = [];
+  const seen = new Set<string>();
+  const remember = (full: string | null) => {
+    if (!full || seen.has(full) || found.length >= maxFiles) return;
+    seen.add(full);
+    found.push(full);
+  };
+
+  for (const hint of hints) {
+    remember(resolveRepoFile(repoRoot, hint.replace(/^[./]+/, '')));
+    if (found.length >= maxFiles) return found;
+  }
+
+  const basenames = new Set(hints.map((hint) => path.basename(hint).toLowerCase()));
+  const indexed = gitNameOnly(repoRoot, ['ls-files']);
+  const candidates =
+    indexed.length > 0
+      ? indexed
+      : collectRepoContextFiles(repoRoot, DEFAULT_CONTEXT_GLOBS, 250).map((file) =>
+          path.relative(repoRoot, file)
+        );
+
+  for (const rel of candidates) {
+    if (found.length >= maxFiles) break;
+    const base = path.basename(rel).toLowerCase();
+    const stem = base.replace(/\.[^.]+$/, '');
+    if (!basenames.has(base) && !basenames.has(stem)) continue;
+    remember(resolveRepoFile(repoRoot, rel));
+  }
+
+  return found;
 }
 
 /**
@@ -242,6 +370,16 @@ export function listWorkDirDeltaFiles(workDir: string, sinceMs: number): string[
   });
 }
 
+function uniquePaths(paths: string[], seen: Set<string>): string[] {
+  const out: string[] = [];
+  for (const filePath of paths) {
+    if (seen.has(filePath)) continue;
+    seen.add(filePath);
+    out.push(filePath);
+  }
+  return out;
+}
+
 /** Build priority-ordered file groups for a work item context. */
 export function buildWorkItemContextGroups(
   workItem: WorkItem,
@@ -267,28 +405,46 @@ export function buildWorkItemContextGroups(
     return !isAgenthubIgnored(rel, ignorePatterns);
   });
 
+  const gitChanged = collectGitChangedFiles(basePath).filter((p) => {
+    const rel = path.isAbsolute(p) ? path.relative(basePath, p) : p;
+    return !isAgenthubIgnored(rel, ignorePatterns);
+  });
+  const acLinked = collectAcLinkedFiles(workItem, basePath).filter((p) => {
+    const rel = path.isAbsolute(p) ? path.relative(basePath, p) : p;
+    return !isAgenthubIgnored(rel, ignorePatterns);
+  });
+
   const loopIteration = options.loopIteration ?? 0;
   const repoCap = loopIteration > 1 ? 5 : DEFAULT_MAX_REPO_FILES;
-  const cappedRepo = filteredRepo.slice(0, repoCap);
+  const seen = new Set<string>();
 
-  let groups: ContextFileGroup[];
-
+  const artifactPaths = uniquePaths(workDirPaths, seen);
+  let deltaPaths: string[] = [];
   if (options.deltaSinceMs != null && resolvedWorkDir) {
     const deltaSet = new Set(listWorkDirDeltaFiles(resolvedWorkDir, options.deltaSinceMs));
-    const deltaPaths = workDirPaths.filter((p) => deltaSet.has(p));
-    const stablePaths = workDirPaths.filter((p) => !deltaSet.has(p));
-
-    groups = [
-      { tier: 1, label: 'work-dir-delta', filePaths: deltaPaths },
-      { tier: 2, label: 'work-dir', filePaths: stablePaths },
-      { tier: loopIteration > 1 ? 4 : 3, label: 'repo', filePaths: cappedRepo },
-    ];
-  } else {
-    groups = [
-      { tier: 1, label: 'work-dir', filePaths: workDirPaths },
-      { tier: loopIteration > 1 ? 4 : 3, label: 'repo', filePaths: cappedRepo },
-    ];
+    deltaPaths = uniquePaths(
+      artifactPaths.filter((p) => deltaSet.has(p)),
+      new Set()
+    );
   }
+  const gitPaths = uniquePaths(gitChanged, seen);
+  const acPaths = uniquePaths(acLinked, seen);
+  const residualRepo = uniquePaths(filteredRepo, seen).slice(0, repoCap);
+
+  const groups: ContextFileGroup[] = [];
+  if (deltaPaths.length > 0) {
+    groups.push({ tier: 1, label: 'work-dir-delta', filePaths: deltaPaths });
+    groups.push({
+      tier: 1,
+      label: 'artifacts',
+      filePaths: artifactPaths.filter((p) => !deltaPaths.includes(p)),
+    });
+  } else {
+    groups.push({ tier: 1, label: 'artifacts', filePaths: artifactPaths });
+  }
+  groups.push({ tier: 2, label: 'git-changed', filePaths: gitPaths });
+  groups.push({ tier: 2, label: 'ac-linked', filePaths: acPaths });
+  groups.push({ tier: loopIteration > 1 ? 4 : 3, label: 'repo', filePaths: residualRepo });
 
   return { groups, basePath };
 }

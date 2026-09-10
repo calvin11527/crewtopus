@@ -210,7 +210,21 @@ export function claimNextPendingJob(): LoopJob | null {
   const db = getDatabase();
   const claim = db.transaction(() => {
     const row = db
-      .prepare(`SELECT * FROM loop_job WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1`)
+      .prepare(
+        `SELECT * FROM loop_job j
+         WHERE j.status = 'pending'
+           AND (
+             j.work_item_id IS NULL
+             OR NOT EXISTS (
+               SELECT 1 FROM loop_job r
+               WHERE r.status = 'running'
+                 AND r.work_item_id IS NOT NULL
+                 AND r.work_item_id = j.work_item_id
+             )
+           )
+         ORDER BY j.created_at ASC
+         LIMIT 1`
+      )
       .get() as LoopJobRow | undefined;
     if (!row) return null;
 

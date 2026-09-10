@@ -17,6 +17,7 @@ import {
 import { runWorkItemAgent } from '../modules/work-items';
 import { getLoopRun } from '../modules/loop-run';
 import { runWorkItemPipeline } from '../modules/work-item-pipeline';
+import { resolveJobConcurrency } from '../modules/loop-worker';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -141,5 +142,30 @@ describe('Job Queue (M4)', () => {
     expect(job.status).toBe('pending');
     expect(job.payload.executionId).toBe('ex-1');
     expect(claimNextPendingJob()?.id).toBe(job.id);
+  });
+
+  it('clamps worker concurrency to 1–4', () => {
+    const prev = process.env.AGENTHUB_JOB_CONCURRENCY;
+    process.env.AGENTHUB_JOB_CONCURRENCY = '99';
+    expect(resolveJobConcurrency()).toBe(4);
+    process.env.AGENTHUB_JOB_CONCURRENCY = '0';
+    expect(resolveJobConcurrency()).toBe(1);
+    if (prev === undefined) delete process.env.AGENTHUB_JOB_CONCURRENCY;
+    else process.env.AGENTHUB_JOB_CONCURRENCY = prev;
+  });
+
+  it('does not claim a second job for a work item that already has a running job', () => {
+    const item = createWorkItem({ type: 'task', title: 'Busy item', assignedAgentType: 'mock' });
+    const other = createWorkItem({ type: 'task', title: 'Free item', assignedAgentType: 'mock' });
+    const first = enqueueWorkItemAgent(item.id);
+    enqueueWorkItemAgent(item.id);
+    const otherJob = enqueueWorkItemAgent(other.id);
+
+    const claimed = claimNextPendingJob();
+    expect(claimed?.id).toBe(first.id);
+
+    const next = claimNextPendingJob();
+    expect(next?.id).toBe(otherJob.id);
+    expect(claimNextPendingJob()).toBeNull();
   });
 });
