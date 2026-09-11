@@ -589,7 +589,10 @@ export function prepareWorkItemAgentRun(id: string, jobId: string): WorkItem {
   return updateWorkItem(id, { status: 'in_progress' })!;
 }
 
-export async function runWorkItemAgent(id: string): Promise<{
+export async function runWorkItemAgent(
+  id: string,
+  options: { approvalId?: string } = {}
+): Promise<{
   item: WorkItem;
   result: { content: string; agentType: AgentType; auditId: string };
 }> {
@@ -635,6 +638,7 @@ export async function runWorkItemAgent(id: string): Promise<{
       basePath,
       outputDir: workDir,
       filePaths: auditFilePaths,
+      approvalId: options.approvalId,
     });
 
     const { created: filesCreated, updated: filesUpdated } = diffWorkDirFiles(
@@ -705,6 +709,21 @@ export async function runWorkItemAgent(id: string): Promise<{
       },
     };
   } catch (err) {
+    const { ApprovalRequiredError } = await import('./approval-gate');
+    if (err instanceof ApprovalRequiredError) {
+      updateWorkItem(id, { status: 'in_review', loopStatus: 'awaiting_approval' });
+      logWorkItemActivity({
+        workItemId: id,
+        activityType: 'comment',
+        summary: `Awaiting approval for ${item.key} (sensitivity ${err.approvalRequest.sensitivityLevel})`,
+        metadata: {
+          event: 'approval_required',
+          approvalId: err.approvalRequest.id,
+          sensitivityLevel: err.approvalRequest.sensitivityLevel,
+        },
+      });
+      throw err;
+    }
     logWorkItemActivity({
       workItemId: id,
       activityType: 'agent_failed',

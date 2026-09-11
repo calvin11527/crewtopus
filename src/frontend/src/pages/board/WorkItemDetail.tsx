@@ -190,7 +190,7 @@ export default function WorkItemDetail({
                 ) : null}
                 {boardItem.loopIteration > 0 || boardItem.loopStatus !== 'idle' ? (
                   <span
-                    className={`loop-badge loop-badge--detail${boardItem.loopStatus === 'escalated' ? ' loop-badge--escalated' : ''}${boardItem.loopStatus === 'running' ? ' loop-badge--running' : ''}`}
+                    className={`loop-badge loop-badge--detail${boardItem.loopStatus === 'escalated' || boardItem.loopStatus === 'awaiting_approval' ? ' loop-badge--escalated' : ''}${boardItem.loopStatus === 'running' ? ' loop-badge--running' : ''}`}
                   >
                     Loop {boardItem.loopIteration}/{boardItem.maxLoopIterations} ·{' '}
                     {LOOP_STATUS_LABEL[boardItem.loopStatus]}

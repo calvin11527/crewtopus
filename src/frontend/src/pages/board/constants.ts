@@ -122,6 +122,7 @@ export function loopBadgeLabel(item: { loopStatus: LoopStatus; loopIteration: nu
     return `${item.loopIteration}/${item.maxLoopIterations}`;
   }
   if (item.loopStatus === 'escalated') return 'needs review';
+  if (item.loopStatus === 'awaiting_approval') return 'needs approval';
   if (item.loopIteration > 0 && item.loopStatus === 'approved') {
     return `✓ ${item.loopIteration} iter`;
   }
@@ -136,6 +137,7 @@ export const LOOP_STATUS_LABEL: Record<LoopStatus, string> = {
   failed: 'Failed',
   cancelled: 'Cancelled',
   awaiting_shift: 'Awaiting next shift',
+  awaiting_approval: 'Awaiting approval',
 };
 
 export interface ItemFormState {

@@ -12,6 +12,7 @@ const STATUS_COLORS: Record<string, string> = {
   paused: 'badge--amber',
   cancelled: 'badge--muted',
   pending: 'badge--amber',
+  awaiting_approval: 'badge--amber',
   approved: 'badge--green',
   rejected: 'badge--red',
   modified: 'badge--purple',

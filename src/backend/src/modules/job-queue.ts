@@ -7,7 +7,7 @@ import { logWorkItemActivity } from './work-item-activity';
 import { envString } from '../utils/env';
 
 
-export type LoopJobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type LoopJobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'awaiting_approval';
 export type LoopJobType =
   | 'work_item_pipeline'
   | 'work_item_agent'
@@ -153,6 +153,7 @@ export function enqueueWorkItemPipeline(
       reviewAuditId?: string;
     };
     autoChainFix?: boolean;
+    approvalId?: string;
   } = {}
 ): LoopJob {
   return insertLoopJob('work_item_pipeline', workItemId, workflowId, options);
@@ -169,14 +170,26 @@ export function enqueueStoryLifecycleJob(
     maxIterations?: number;
     autoLoop?: boolean;
     orchestrator?: string;
+    approvalId?: string;
   }
 ): LoopJob {
   return insertLoopJob(jobType, workItemId, null, payload);
 }
 
 /** Enqueue a single-agent run (durable SQLite queue). */
-export function enqueueWorkItemAgent(workItemId: string): LoopJob {
-  return insertLoopJob('work_item_agent', workItemId, null, {});
+export function enqueueWorkItemAgent(
+  workItemId: string,
+  payload: { approvalId?: string } = {}
+): LoopJob {
+  return insertLoopJob('work_item_agent', workItemId, null, payload);
+}
+
+/** Re-queue an existing job with a payload patch (used after approval). */
+export function requeueLoopJob(job: LoopJob, payloadPatch: Record<string, unknown> = {}): LoopJob {
+  return insertLoopJob(job.jobType, job.workItemId ?? null, job.workflowId ?? null, {
+    ...job.payload,
+    ...payloadPatch,
+  });
 }
 
 export function getLoopJob(id: string): LoopJob | null {
@@ -268,6 +281,43 @@ export function failLoopJob(id: string, error: string, loopRunId?: string): Loop
 
   updateQueueDepthGauge();
   return getLoopJob(id);
+}
+
+/** Pause a running job until a human approval is resolved. */
+export function pauseLoopJob(
+  id: string,
+  approval: { id: string; sensitivityLevel: number },
+  loopRunId?: string
+): LoopJob | null {
+  getDatabase()
+    .prepare(
+      `UPDATE loop_job SET status = 'awaiting_approval', result = ?, error = ?, loop_run_id = ? WHERE id = ? AND status = 'running'`
+    )
+    .run(
+      JSON.stringify({
+        awaitingApproval: true,
+        approvalRequestId: approval.id,
+        sensitivityLevel: approval.sensitivityLevel,
+      }),
+      `Approval required for sensitivity level ${approval.sensitivityLevel}. Request ID: ${approval.id}`,
+      loopRunId ?? null,
+      id
+    );
+
+  updateQueueDepthGauge();
+  return getLoopJob(id);
+}
+
+/** Latest failed or approval-paused job for a work item (used to resume after approve). */
+export function getLatestResumableJobForWorkItem(workItemId: string): LoopJob | null {
+  const row = getDatabase()
+    .prepare(
+      `SELECT * FROM loop_job
+       WHERE work_item_id = ? AND status IN ('awaiting_approval', 'failed')
+       ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(workItemId) as LoopJobRow | undefined;
+  return row ? mapJob(row) : null;
 }
 
 /** Recover jobs stuck in running state after crash (skip jobs owned by live workers). */

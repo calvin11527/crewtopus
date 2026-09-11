@@ -517,11 +517,16 @@ export function useApprovals() {
   return useQuery<ApprovalRequest[]>({ queryKey: queryKeys.approvals, queryFn: () => api.get('/approval') });
 }
 
+function invalidateApprovalQueries(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: queryKeys.approvals });
+  qc.invalidateQueries({ queryKey: ['work-items'] });
+}
+
 export function useApproveRequest() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.post<ApprovalRequest>(`/approval/${id}/approve`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.approvals }),
+    onSuccess: () => invalidateApprovalQueries(qc),
   });
 }
 
@@ -529,7 +534,7 @@ export function useRejectRequest() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.post<ApprovalRequest>(`/approval/${id}/reject`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.approvals }),
+    onSuccess: () => invalidateApprovalQueries(qc),
   });
 }
 

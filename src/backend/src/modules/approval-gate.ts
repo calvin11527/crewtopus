@@ -164,25 +164,52 @@ export function modifyAndApprove(id: string, modifiedScope: ContextScope): Appro
   return { ...existing, contextScope: modifiedScope, status: 'modified', resolvedAt: timestamp };
 }
 
+function matchesContextHash(row: ApprovalRow, contextHash: string): boolean {
+  if (row.context_hash) return row.context_hash === contextHash;
+  const scope = parseJson<ContextScope>(row.context_scope, {
+    files: [],
+    diffs: [],
+    symbols: [],
+    maxTokens: 8000,
+    sensitivityLevel: 0,
+  });
+  return hashContext(scope) === contextHash;
+}
+
 /** Check if an unconsumed approved request exists for a given context hash. */
 export function hasApprovedContext(contextHash: string): boolean {
   const rows = getDatabase()
     .prepare(
-      `SELECT context_hash, context_scope FROM approval_request
+      `SELECT * FROM approval_request
        WHERE status IN ('approved', 'modified') AND consumed_at IS NULL`
     )
-    .all() as Array<{ context_hash: string | null; context_scope: string }>;
-  return rows.some((row) => {
-    if (row.context_hash) return row.context_hash === contextHash;
-    const scope = parseJson<ContextScope>(row.context_scope, {
-      files: [],
-      diffs: [],
-      symbols: [],
-      maxTokens: 8000,
-      sensitivityLevel: 0,
-    });
-    return hashContext(scope) === contextHash;
-  });
+    .all() as ApprovalRow[];
+  return rows.some((row) => matchesContextHash(row, contextHash));
+}
+
+/** Find an unconsumed approved/modified request bound to this work item and context. */
+export function findUnconsumedApprovedRequest(binding: {
+  workItemId?: string;
+  contextHash: string;
+}): ApprovalRequest | null {
+  const rows = getDatabase()
+    .prepare(
+      `SELECT * FROM approval_request
+       WHERE status IN ('approved', 'modified') AND consumed_at IS NULL
+       ORDER BY resolved_at DESC, created_at DESC`
+    )
+    .all() as ApprovalRow[];
+
+  for (const row of rows) {
+    if (!matchesContextHash(row, binding.contextHash)) continue;
+    const approvalWorkItem = row.work_item_id ?? undefined;
+    const requestWorkItem = binding.workItemId;
+    if (approvalWorkItem && requestWorkItem && approvalWorkItem !== requestWorkItem) continue;
+    if (approvalWorkItem && !requestWorkItem) continue;
+    if (!approvalWorkItem && requestWorkItem) continue;
+    return mapApproval(row);
+  }
+  return null;
 }
 
 export class ApprovalBindingError extends Error {

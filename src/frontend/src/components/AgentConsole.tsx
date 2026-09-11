@@ -14,6 +14,7 @@ const LOOP_STATUS_LABEL: Record<LoopStatus, string> = {
   failed: 'Failed',
   cancelled: 'Cancelled',
   awaiting_shift: 'Awaiting shift',
+  awaiting_approval: 'Awaiting approval',
 };
 
 interface AgentConsoleProps {

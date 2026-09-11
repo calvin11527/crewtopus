@@ -3,6 +3,7 @@ import {
   createApprovalRequest,
   approveRequest,
   consumeApprovedRequest,
+  findUnconsumedApprovedRequest,
   ApprovalBindingError,
 } from '../modules/approval-gate';
 import { hashContext } from '../modules/context-scope';
@@ -60,5 +61,18 @@ describe('approval-gate binding', () => {
         contextHash: hashContext(makeScope({ files: ['// other.ts'] })),
       })
     ).toThrow(/does not match this context/);
+  });
+
+  it('finds an unconsumed approved request for the same work item and hash', () => {
+    const item = createWorkItem({ type: 'task', title: 'Find approved' });
+    const scope = makeScope();
+    const pending = createApprovalRequest(scope, undefined, { workItemId: item.id });
+    approveRequest(pending.id);
+
+    const found = findUnconsumedApprovedRequest({
+      workItemId: item.id,
+      contextHash: hashContext(scope),
+    });
+    expect(found?.id).toBe(pending.id);
   });
 });

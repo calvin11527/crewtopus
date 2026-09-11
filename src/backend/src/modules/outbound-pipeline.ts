@@ -9,6 +9,7 @@ import {
   requiresApproval,
   createApprovalRequest,
   consumeApprovedRequest,
+  findUnconsumedApprovedRequest,
   ApprovalRequiredError,
 } from './approval-gate';
 import { logAuditEntry } from './audit-logger';
@@ -237,10 +238,14 @@ export async function executeOutboundPipeline(request: OutboundRequest): Promise
   let approvalStatus: ApprovalStatus | undefined;
 
   if (requiresApproval(effectiveScope.sensitivityLevel as 0 | 1 | 2 | 3) || privacy.requiresApproval) {
-    if (request.approvalId) {
-      const approval = consumeApprovedRequest(request.approvalId, {
+    const contextHash = hashContext(effectiveScope);
+    const approvalId =
+      request.approvalId ??
+      findUnconsumedApprovedRequest({ workItemId: request.workItemId, contextHash })?.id;
+    if (approvalId) {
+      const approval = consumeApprovedRequest(approvalId, {
         workItemId: request.workItemId,
-        contextHash: hashContext(effectiveScope),
+        contextHash,
       });
       if (approval.status === 'modified') {
         effectiveScope = approval.contextScope;

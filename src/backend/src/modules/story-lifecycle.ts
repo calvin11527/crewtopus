@@ -320,6 +320,7 @@ async function runLifecycleAgent(input: {
   capability: 'analysis' | 'planning';
   prompt: string;
   workDir: string;
+  approvalId?: string;
 }): Promise<{ content: string; agentType: AgentType; auditId: string }> {
   const agent = resolveSprintAgent(input.sprintId, input.role);
   if (!agent) throw new Error(`No ${input.role.replace('_', ' ')} staffed for sprint`);
@@ -345,6 +346,7 @@ async function runLifecycleAgent(input: {
       basePath,
       outputDir: input.workDir,
       filePaths: auditFilePaths,
+      approvalId: input.approvalId,
     });
     return { content: pipeline.content, agentType: pipeline.agentType, auditId: pipeline.auditId };
   } finally {
@@ -354,7 +356,8 @@ async function runLifecycleAgent(input: {
 
 export async function runStoryBaPhase(
   workItemId: string,
-  sprintId: string
+  sprintId: string,
+  options: { approvalId?: string } = {}
 ): Promise<{ item: WorkItem; content: string; agentType: AgentType; auditId: string }> {
   const story = getWorkItem(workItemId);
   if (!story || story.type !== 'story') throw new Error('Story work item not found');
@@ -380,6 +383,7 @@ export async function runStoryBaPhase(
     capability: 'analysis',
     prompt: buildBaPrompt(story, criteria, workDir),
     workDir,
+    approvalId: options.approvalId,
   });
 
   writeBaArtifacts(workDir, result.content, story);
@@ -415,7 +419,8 @@ export async function runStoryBaPhase(
 
 export async function runStoryPmPhase(
   workItemId: string,
-  sprintId: string
+  sprintId: string,
+  options: { approvalId?: string } = {}
 ): Promise<{ item: WorkItem; children: WorkItem[]; content: string; agentType: AgentType; auditId: string }> {
   const story = getWorkItem(workItemId);
   if (!story || story.type !== 'story') throw new Error('Story work item not found');
@@ -442,6 +447,7 @@ export async function runStoryPmPhase(
     capability: 'planning',
     prompt: buildPmPrompt(story, criteria, workDir, existingChildren.length),
     workDir,
+    approvalId: options.approvalId,
   });
 
   const decomposition = parsePmDecomposition(result.content);

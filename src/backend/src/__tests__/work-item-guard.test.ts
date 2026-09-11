@@ -16,6 +16,14 @@ describe('work-item-guard', () => {
     );
   });
 
+  it('detects awaiting approval as busy', () => {
+    const item = createWorkItem({ type: 'task', title: 'Approval busy', status: 'in_review' });
+    expect(isWorkItemBusy({ ...item, loopStatus: 'awaiting_approval', status: 'in_review' })).toBe(true);
+    expect(
+      workItemBusyMessage({ ...item, key: item.key, loopStatus: 'awaiting_approval', status: 'in_review' })
+    ).toContain('approval');
+  });
+
   it('allows run when board status is in_progress but no active pipeline', () => {
     const item = createWorkItem({ type: 'task', title: 'Guard test', status: 'in_progress' });
     expect(isWorkItemBusy(item)).toBe(false);

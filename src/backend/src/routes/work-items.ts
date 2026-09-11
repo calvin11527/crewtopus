@@ -28,6 +28,7 @@ import {
 import { buildLoopRetryPayload, isTerminalLoopStatus } from '../modules/loop-retry';
 import { enqueueWorkItemAgent, getActiveJobForWorkItem } from '../modules/job-queue';
 import { assertWorkItemRunnable, assertWorkItemEditable, WorkItemBusyError } from '../modules/work-item-guard';
+import { ApprovalRequiredError } from '../modules/approval-gate';
 import { runFullLifecycleSync, startFullLifecycle } from '../modules/full-lifecycle';
 import {
   getSprintTeamView,
@@ -735,6 +736,10 @@ router.post('/:id/run-agent', async (req: Request, res: Response) => {
     const message = (err as Error).message;
     if (err instanceof WorkItemBusyError) {
       res.status(409).json({ message: err.reason, workItemId: err.workItemId, code: 'work_item_busy' });
+      return;
+    }
+    if (err instanceof ApprovalRequiredError) {
+      res.status(403).json({ message: err.message, approvalRequest: err.approvalRequest });
       return;
     }
     if (message === 'Work item not found') {

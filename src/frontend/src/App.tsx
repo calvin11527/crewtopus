@@ -66,7 +66,7 @@ export default function App() {
           setPendingJob(workItemId, jobId);
         } else if (
           workItemId &&
-          (status === 'completed' || status === 'failed' || status === 'cancelled')
+          (status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'awaiting_approval')
         ) {
           clearPendingJob(workItemId);
         }

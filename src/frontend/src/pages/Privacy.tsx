@@ -43,7 +43,7 @@ export default function Privacy() {
         <div id="approval-gate" className="card">
           <h3>Approval Gate</h3>
           <p className="text-muted" style={{ marginBottom: 16 }}>
-            High-sensitivity requests (level ≥ 2) require human approval before outbound execution.
+            High-sensitivity requests (level ≥ 2) pause the agent until you approve. Approving resumes the original run.
           </p>
           {approvalsLoading ? (
             <p className="loading-text">Loading...</p>
@@ -58,6 +58,8 @@ export default function Privacy() {
                     <span className="text-muted">Sensitivity: {req.sensitivityLevel}</span>
                   </div>
                   <p className="approval-meta">
+                    {req.summary ? `${req.summary} · ` : ''}
+                    {req.workItemId ? `work item ${req.workItemId.slice(0, 8)}… · ` : ''}
                     {req.contextScope.files.length} files, {req.contextScope.maxTokens} max tokens
                   </p>
                   <div className="approval-actions">

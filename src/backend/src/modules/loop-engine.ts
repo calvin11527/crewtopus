@@ -44,6 +44,7 @@ import { incrementCounter } from '../metrics';
 import { publishLoopOutput } from './loop-output';
 import { isLoopCancelled as isLoopCancelRequested, clearLoopCancel } from './loop-cancel';
 import { updateAgentStatus } from './agent-registry';
+import { ApprovalRequiredError } from './approval-gate';
 
 export type { ReviewVerdict };
 
@@ -79,6 +80,8 @@ export interface AgentLoopOptions {
   reviewOnly?: boolean;
   /** Seed iteration 1 implement step with prior escalation feedback. */
   escalationContext?: EscalationRetryContext;
+  /** Redeem a previously approved high-sensitivity request. */
+  approvalId?: string;
 }
 
 /** @alias AgentLoopOptions — used by work-item pipeline API */
@@ -331,6 +334,7 @@ async function runLoopAgentStep(input: {
   executionLabel: string;
   deltaSinceMs?: number;
   demo?: boolean;
+  approvalId?: string;
 }): Promise<{ pipeline: Awaited<ReturnType<typeof import('./outbound-pipeline').executeOutboundPipeline>>; filesCreated: string[] }> {
   const { executeOutboundPipeline } = await import('./outbound-pipeline');
   const resolvedAgentId = input.agentId ?? input.item?.assignedAgentId;
@@ -431,10 +435,13 @@ async function runLoopAgentStep(input: {
       contextSummary,
       demo: input.demo,
       allowMockFallback: input.demo === true,
+      approvalId: input.approvalId,
     });
     if (resolvedAgentId) updateAgentStatus(resolvedAgentId, 'idle');
   } catch (err) {
-    if (resolvedAgentId) updateAgentStatus(resolvedAgentId, 'error');
+    if (resolvedAgentId) {
+      updateAgentStatus(resolvedAgentId, err instanceof ApprovalRequiredError ? 'idle' : 'error');
+    }
     throw err;
   }
 
@@ -566,6 +573,7 @@ export async function runAgentLoop(input: {
   const loopStartedAtMs = Date.now();
   let previousIterationStartMs = loopStartedAtMs;
   let tokensUsed = 0;
+  let pendingApprovalId = options.approvalId;
 
   try {
     while (iteration < maxIterations) {
@@ -766,7 +774,9 @@ export async function runAgentLoop(input: {
           executionLabel,
           deltaSinceMs,
           demo: options.demo,
+          approvalId: pendingApprovalId,
         });
+        pendingApprovalId = undefined;
 
         iterationPriorOutputs.push(stepResult.content);
         tokensUsed += stepResult.tokenCount ?? 0;
@@ -1051,6 +1061,35 @@ export async function runAgentLoop(input: {
       loopRunId,
     };
   } catch (err) {
+    if (err instanceof ApprovalRequiredError) {
+      if (workItemId) clearLoopCancel(workItemId);
+      if (workItemId && item) {
+        logWorkItemActivity({
+          workItemId,
+          activityType: 'comment',
+          summary: `Awaiting approval for ${item.key} (sensitivity ${err.approvalRequest.sensitivityLevel})`,
+          metadata: {
+            event: 'approval_required',
+            approvalId: err.approvalRequest.id,
+            loopId: loop.id,
+            loopIteration: iteration,
+            sensitivityLevel: err.approvalRequest.sensitivityLevel,
+          },
+        });
+        updateWorkItem(workItemId, {
+          status: 'in_review',
+          loopStatus: 'awaiting_approval',
+          loopIteration: iteration,
+        });
+        emitLoopUpdate(workItemId, iteration, maxIterations, 'awaiting_approval');
+      }
+      completeLoopRun(loopRunId, {
+        iteration,
+        verdict: reviewVerdict,
+        loopStatus: 'awaiting_approval',
+      });
+      throw err;
+    }
     failLoopRun(loopRunId, (err as Error).message);
     if (workItemId) clearLoopCancel(workItemId);
     if (workItemId && item) {

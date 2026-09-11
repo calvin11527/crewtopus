@@ -331,7 +331,8 @@ export type LoopStatus =
   | 'escalated'
   | 'failed'
   | 'cancelled'
-  | 'awaiting_shift';
+  | 'awaiting_shift'
+  | 'awaiting_approval';
 
 export type SprintAutomationMode = 'autonomous' | 'paused';
 

@@ -351,6 +351,7 @@ export interface ApprovalRequest {
   id: string;
   workflowId?: string;
   workItemId?: string;
+  summary?: string;
   contextScope: ContextScope;
   contextHash?: string;
   sensitivityLevel: number;
@@ -378,7 +379,8 @@ export type LoopStatus =
   | 'escalated'
   | 'failed'
   | 'cancelled'
-  | 'awaiting_shift';
+  | 'awaiting_shift'
+  | 'awaiting_approval';
 export type SprintStatus = 'planning' | 'active' | 'completed';
 
 export interface Sprint {

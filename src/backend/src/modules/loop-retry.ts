@@ -29,6 +29,7 @@ export interface LoopRetryPayload {
   retryMode?: LoopRetryMode;
   escalationContext?: EscalationRetryContext;
   autoChainFix?: boolean;
+  approvalId?: string;
 }
 
 export function isTerminalLoopStatus(status: LoopStatus): boolean {

@@ -111,4 +111,30 @@ describe('Work Items (Agile/Scrum)', () => {
     expect(activity.some((a) => a.activityType === 'agent_started')).toBe(true);
     expect(activity.some((a) => a.activityType === 'agent_completed')).toBe(true);
   });
+
+  it('pauses for approval instead of failing the agent run', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wi-approval-'));
+    process.env.AGENTHUB_WORK_DIR = tmp;
+    fs.writeFileSync(path.join(tmp, 'private-notes.md'), '# Planning notes\n');
+
+    const item = createWorkItem({
+      type: 'task',
+      title: 'Sensitive agent run',
+      assignedAgentType: 'mock',
+      status: 'todo',
+    });
+
+    await expect(runWorkItemAgent(item.id)).rejects.toMatchObject({ name: 'ApprovalRequiredError' });
+
+    const updated = getWorkItem(item.id)!;
+    expect(updated.status).toBe('in_review');
+    expect(updated.loopStatus).toBe('awaiting_approval');
+
+    const activity = listWorkItemActivity(item.id);
+    expect(activity.some((a) => a.activityType === 'agent_failed')).toBe(false);
+    expect(activity.some((a) => a.metadata?.event === 'approval_required')).toBe(true);
+
+    fs.rmSync(tmp, { recursive: true, force: true });
+    delete process.env.AGENTHUB_WORK_DIR;
+  });
 });

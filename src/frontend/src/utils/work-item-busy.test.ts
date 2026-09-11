@@ -27,6 +27,11 @@ describe('work-item-busy', () => {
     expect(isWorkItemBusy({ ...baseItem, loopStatus: 'running' })).toBe(true);
   });
 
+  it('detects awaiting approval as busy', () => {
+    expect(isWorkItemBusy({ ...baseItem, loopStatus: 'awaiting_approval' })).toBe(true);
+    expect(workItemBusyMessage({ ...baseItem, loopStatus: 'awaiting_approval' })).toContain('approval');
+  });
+
   it('detects background job flag', () => {
     expect(isWorkItemBusy(baseItem, true)).toBe(true);
   });

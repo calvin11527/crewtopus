@@ -47,7 +47,7 @@ export default function WorkItemCard({
   return (
     <div
       id={`card-${item.key}`}
-      className={`kanban-card${selected ? ' kanban-card--selected' : ''}${item.loopStatus === 'escalated' ? ' kanban-card--escalated' : ''}${item.loopStatus === 'running' ? ' kanban-card--loop-running' : ''}${cardBusy ? ' kanban-card--busy' : ''}${dragging ? ' kanban-card--dragging' : ''}`}
+      className={`kanban-card${selected ? ' kanban-card--selected' : ''}${item.loopStatus === 'escalated' || item.loopStatus === 'awaiting_approval' ? ' kanban-card--escalated' : ''}${item.loopStatus === 'running' ? ' kanban-card--loop-running' : ''}${cardBusy ? ' kanban-card--busy' : ''}${dragging ? ' kanban-card--dragging' : ''}`}
       draggable={!cardBusy}
       onDragStart={(e) => {
         if (cardBusy) {
@@ -73,7 +73,7 @@ export default function WorkItemCard({
         <div className="kanban-card-badges">
           {loopBadgeLabel(item) && (
             <span
-              className={`loop-badge${item.loopStatus === 'escalated' ? ' loop-badge--escalated' : ''}${item.loopStatus === 'running' ? ' loop-badge--running' : ''}`}
+              className={`loop-badge${item.loopStatus === 'escalated' || item.loopStatus === 'awaiting_approval' ? ' loop-badge--escalated' : ''}${item.loopStatus === 'running' ? ' loop-badge--running' : ''}`}
               title={LOOP_STATUS_LABEL[item.loopStatus]}
             >
               {loopBadgeLabel(item)}

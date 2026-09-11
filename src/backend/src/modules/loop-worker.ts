@@ -10,6 +10,8 @@ import {
 } from './job-queue';
 import { getWorkItem, runWorkItemAgent, updateWorkItem } from './work-items';
 import { logWorkItemActivity } from './work-item-activity';
+import { ApprovalRequiredError } from './approval-gate';
+import { pauseJobForApproval } from './approval-resume';
 import {
   runWorkItemPipeline,
   ensureGrokCopilotWorkflow,
@@ -128,7 +130,9 @@ async function processJob(job: LoopJob): Promise<void> {
     }
 
     if (job.jobType === 'work_item_agent') {
-      const result = await runWorkItemAgent(job.workItemId!);
+      const result = await runWorkItemAgent(job.workItemId!, {
+        approvalId: (job.payload as { approvalId?: string }).approvalId,
+      });
       completeLoopJob(job.id, result as unknown as Record<string, unknown>);
 
       broadcast({
@@ -148,15 +152,16 @@ async function processJob(job: LoopJob): Promise<void> {
       const sprintId = (job.payload as { sprintId?: string }).sprintId;
       if (!sprintId) throw new Error('Lifecycle job missing sprintId');
 
+      const approvalId = (job.payload as { approvalId?: string }).approvalId;
       if (job.jobType === 'story_ba') {
-        const result = await runStoryBaPhase(job.workItemId!, sprintId);
+        const result = await runStoryBaPhase(job.workItemId!, sprintId, { approvalId });
         completeLoopJob(job.id, {
           item: { id: result.item.id, key: result.item.key, status: result.item.status },
           agentType: result.agentType,
           auditId: result.auditId,
         });
       } else {
-        const result = await runStoryPmPhase(job.workItemId!, sprintId);
+        const result = await runStoryPmPhase(job.workItemId!, sprintId, { approvalId });
         completeLoopJob(job.id, {
           item: { id: result.item.id, key: result.item.key, status: result.item.status },
           agentType: result.agentType,
@@ -234,6 +239,11 @@ async function processJob(job: LoopJob): Promise<void> {
       timestamp: now(),
     });
   } catch (err) {
+    if (err instanceof ApprovalRequiredError) {
+      pauseJobForApproval(job, err.approvalRequest);
+      return;
+    }
+
     const message = (err as Error).message;
     failLoopJob(job.id, message);
 

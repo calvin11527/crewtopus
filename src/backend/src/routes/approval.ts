@@ -7,6 +7,7 @@ import {
   modifyAndApprove,
   requiresApproval,
 } from '../modules/approval-gate';
+import { rejectWorkItemApproval, resumeAfterApproval } from '../modules/approval-resume';
 import type { ContextScope } from '../types';
 
 const router = Router();
@@ -36,7 +37,8 @@ router.post('/:id/approve', (req: Request, res: Response) => {
     res.status(404).json({ message: 'Approval request not found or not pending' });
     return;
   }
-  res.json(request);
+  const resumedJob = resumeAfterApproval(request);
+  res.json({ ...request, resumedJobId: resumedJob?.id });
 });
 
 router.post('/:id/reject', (req: Request, res: Response) => {
@@ -45,6 +47,7 @@ router.post('/:id/reject', (req: Request, res: Response) => {
     res.status(404).json({ message: 'Approval request not found or not pending' });
     return;
   }
+  rejectWorkItemApproval(request);
   res.json(request);
 });
 
@@ -59,7 +62,8 @@ router.post('/:id/modify', (req: Request, res: Response) => {
     res.status(404).json({ message: 'Approval request not found or not pending' });
     return;
   }
-  res.json(request);
+  const resumedJob = resumeAfterApproval(request);
+  res.json({ ...request, resumedJobId: resumedJob?.id });
 });
 
 export default router;

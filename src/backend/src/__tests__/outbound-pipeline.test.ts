@@ -6,6 +6,8 @@ import {
   AgentUnavailableError,
 } from '../modules/outbound-pipeline';
 import { listAuditEntries } from '../modules/audit-logger';
+import { ApprovalRequiredError, approveRequest } from '../modules/approval-gate';
+import { createWorkItem } from '../modules/work-items';
 
 function makeScope(overrides: Partial<ContextScope> = {}): ContextScope {
   return {
@@ -111,5 +113,72 @@ describe('Outbound Pipeline Integration', () => {
     expect(result.agentType).toBe('mock');
     expect(result.degraded).toBe(true);
     expect(result.content).toContain('## Analysis');
+  });
+
+  it('pauses on sensitivity 2 and continues after the request is approved', async () => {
+    const item = createWorkItem({ type: 'task', title: 'Sensitive outbound', assignedAgentType: 'mock' });
+    const scope = makeScope({
+      files: ['// notes.md\nno secrets here'],
+      sensitivityLevel: 2,
+    });
+
+    let thrown: ApprovalRequiredError | undefined;
+    try {
+      await executeOutboundPipeline({
+        agentType: 'mock',
+        prompt: 'Summarize',
+        contextScope: scope,
+        workItemId: item.id,
+        task: `${item.key}/analysis`,
+      });
+    } catch (err) {
+      thrown = err as ApprovalRequiredError;
+    }
+
+    expect(thrown).toBeInstanceOf(ApprovalRequiredError);
+    expect(thrown?.approvalRequest.id).toBeTruthy();
+
+    approveRequest(thrown!.approvalRequest.id);
+
+    const result = await executeOutboundPipeline({
+      agentType: 'mock',
+      prompt: 'Summarize',
+      contextScope: scope,
+      workItemId: item.id,
+      task: `${item.key}/analysis`,
+      approvalId: thrown!.approvalRequest.id,
+    });
+    expect(result.content.length).toBeGreaterThan(0);
+    expect(result.approvalStatus).toBe('approved');
+  });
+
+  it('auto-consumes a matching approved request without an explicit approvalId', async () => {
+    const item = createWorkItem({ type: 'task', title: 'Auto consume', assignedAgentType: 'mock' });
+    const scope = makeScope({
+      files: ['// notes.md\nsafe'],
+      sensitivityLevel: 2,
+    });
+
+    await expect(
+      executeOutboundPipeline({
+        agentType: 'mock',
+        prompt: 'Go',
+        contextScope: scope,
+        workItemId: item.id,
+      })
+    ).rejects.toBeInstanceOf(ApprovalRequiredError);
+
+    const { listApprovalRequests } = await import('../modules/approval-gate');
+    const pending = listApprovalRequests('pending').find((r) => r.workItemId === item.id);
+    expect(pending).toBeTruthy();
+    approveRequest(pending!.id);
+
+    const result = await executeOutboundPipeline({
+      agentType: 'mock',
+      prompt: 'Go',
+      contextScope: scope,
+      workItemId: item.id,
+    });
+    expect(result.approvalStatus).toBe('approved');
   });
 });

@@ -204,6 +204,9 @@ function inferActivityStatus(activity: WorkItemActivity): AgentHistoryStatus {
   if (activity.activityType === 'agent_failed') return 'failed';
   if (activity.activityType === 'agent_completed') return 'completed';
   if (activity.activityType === 'agent_started') return 'running';
+  if (event === 'approval_required') return 'info';
+  if (event === 'approval_resume') return 'queued';
+  if (event === 'approval_rejected') return 'failed';
 
   if (
     event === 'agent_queued' ||
@@ -287,7 +290,10 @@ export function isAgentHistoryActivity(activity: WorkItemActivity): boolean {
     event === 'full_lifecycle_start' ||
     event === 'full_lifecycle_pipeline_queued' ||
     event === 'full_lifecycle_chain_failed' ||
-    event === 'full_lifecycle_no_pipeline_target'
+    event === 'full_lifecycle_no_pipeline_target' ||
+    event === 'approval_required' ||
+    event === 'approval_resume' ||
+    event === 'approval_rejected'
   );
 }
 
