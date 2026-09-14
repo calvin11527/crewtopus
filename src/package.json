@@ -62,7 +62,7 @@
   },
   "dependencies": {
     "brace-expansion": "5.0.9",
-    "playwright": "^1.61.1"
+    "playwright": "^1.63.0"
   },
   "overrides": {
     "shell-quote": "1.9.0",
