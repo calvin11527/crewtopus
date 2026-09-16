@@ -9,6 +9,7 @@ import type {
 } from '../../types';
 
 export const DETAIL_WIDTH_KEY = 'agenthub.board.detailWidth';
+export const DETAIL_EXPANDED_KEY = 'agenthub.board.detailExpanded';
 export const CONSOLE_HEIGHT_KEY = 'agenthub.board.consoleHeight';
 /** Persisted board sprint selection: sprint id, `__all__` = All items, absent = auto active sprint. */
 export const SPRINT_SELECTION_KEY = 'agenthub.board.selectedSprint';
@@ -28,6 +29,24 @@ export function readStoredNumber(key: string, fallback: number): number {
 }
 
 export function storeNumber(key: string, value: number): void {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readStoredBoolean(key: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw == null) return fallback;
+    return raw === 'true';
+  } catch {
+    return fallback;
+  }
+}
+
+export function storeBoolean(key: string, value: boolean): void {
   try {
     localStorage.setItem(key, String(value));
   } catch {

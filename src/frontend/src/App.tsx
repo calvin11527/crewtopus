@@ -70,6 +70,10 @@ export default function App() {
         ) {
           clearPendingJob(workItemId);
         }
+        if (workItemId) {
+          qc.invalidateQueries({ queryKey: queryKeys.workItemLiveJob(workItemId) });
+          qc.invalidateQueries({ queryKey: queryKeys.workItemActivity(workItemId) });
+        }
       }
 
       if (
@@ -91,6 +95,19 @@ export default function App() {
           msg.payload && typeof msg.payload === 'object' && 'sprintId' in msg.payload
             ? String((msg.payload as { sprintId: string }).sprintId)
             : null;
+        const workItemId =
+          msg.payload && typeof msg.payload === 'object' && typeof msg.payload.workItemId === 'string'
+            ? msg.payload.workItemId
+            : null;
+        const jobId =
+          msg.payload && typeof msg.payload === 'object' && typeof msg.payload.jobId === 'string'
+            ? msg.payload.jobId
+            : null;
+        if (msg.type === 'shift:update' && workItemId && jobId) {
+          setPendingJob(workItemId, jobId);
+          qc.invalidateQueries({ queryKey: queryKeys.workItemLiveJob(workItemId) });
+          qc.invalidateQueries({ queryKey: queryKeys.workItemActivity(workItemId) });
+        }
         if (sprintId) {
           qc.invalidateQueries({ queryKey: ['work-items', 'sprints', sprintId, 'automation'] });
           qc.invalidateQueries({ queryKey: ['work-items', 'sprints', sprintId, 'team'] });

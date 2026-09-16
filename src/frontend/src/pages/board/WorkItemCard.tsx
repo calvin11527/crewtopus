@@ -21,6 +21,7 @@ interface WorkItemCardProps {
   onDelete: (item: WorkItem) => void;
   onMove: (item: WorkItem, toStatus: WorkItemStatus) => void;
   dragging?: boolean;
+  nowLine?: string | null;
 }
 
 export default function WorkItemCard({
@@ -38,6 +39,7 @@ export default function WorkItemCard({
   onDelete,
   onMove,
   dragging = false,
+  nowLine,
 }: WorkItemCardProps) {
   const cardBusy = isWorkItemBusy(item, cardHasJob);
   const busyTitle = cardBusy ? workItemBusyMessage(item, cardHasJob) : undefined;
@@ -87,6 +89,7 @@ export default function WorkItemCard({
         </div>
       </div>
       <h4 className="kanban-title">{displayWorkItemTitle(item.title)}</h4>
+      {nowLine ? <p className="kanban-now-line">{nowLine}</p> : null}
       {desc ? <p className="kanban-desc">{desc}</p> : null}
       {cardBusy && (
         <p className="kanban-busy-hint">

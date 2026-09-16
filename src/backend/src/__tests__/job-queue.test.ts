@@ -8,6 +8,7 @@ import {
   enqueueWorkItemAgent,
   enqueueWorkflowExecution,
   getLoopJob,
+  getWorkItemLiveJob,
   claimNextPendingJob,
   completeLoopJob,
   recoverStaleLoopJobs,
@@ -88,6 +89,7 @@ describe('Job Queue (M4)', () => {
     const job = enqueueWorkItemAgent(item.id);
     expect(job.status).toBe('pending');
     expect(job.jobType).toBe('work_item_agent');
+    expect(getWorkItemLiveJob(item.id)?.id).toBe(job.id);
 
     const claimed = claimNextPendingJob();
     expect(claimed?.id).toBe(job.id);

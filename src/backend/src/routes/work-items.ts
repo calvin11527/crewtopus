@@ -26,7 +26,7 @@ import {
   getLoopJob,
 } from '../modules/work-item-pipeline';
 import { buildLoopRetryPayload, isTerminalLoopStatus } from '../modules/loop-retry';
-import { enqueueWorkItemAgent, getActiveJobForWorkItem } from '../modules/job-queue';
+import { enqueueWorkItemAgent, getActiveJobForWorkItem, getWorkItemLiveJob } from '../modules/job-queue';
 import { assertWorkItemRunnable, assertWorkItemEditable, WorkItemBusyError } from '../modules/work-item-guard';
 import { ApprovalRequiredError } from '../modules/approval-gate';
 import { runFullLifecycleSync, startFullLifecycle } from '../modules/full-lifecycle';
@@ -422,6 +422,15 @@ router.get('/jobs/:jobId', (req: Request, res: Response) => {
     return;
   }
   res.json(job);
+});
+
+router.get('/:id/active-job', (req: Request, res: Response) => {
+  const item = getWorkItem(req.params.id);
+  if (!item) {
+    res.status(404).json({ message: 'Work item not found' });
+    return;
+  }
+  res.json(getWorkItemLiveJob(req.params.id));
 });
 
 router.get('/:id', (req: Request, res: Response) => {

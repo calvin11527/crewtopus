@@ -43,6 +43,7 @@ interface WorkItemAgentHistoryProps {
   loopHistory?: WorkItemLoopHistory | null;
   isBusy?: boolean;
   agentNames?: Record<string, string>;
+  liveWaitLabel?: string | null;
 }
 
 function statusClass(status: AgentHistoryStatus | 'idle'): string {
@@ -89,9 +90,11 @@ function StatusIcon({ status }: { status: AgentHistoryStatus }) {
 function TimelineRow({
   entry,
   agentNames,
+  liveWaitLabel,
 }: {
   entry: AgentHistoryEntry;
   agentNames?: Record<string, string>;
+  liveWaitLabel?: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const Icon = ROLE_ICON[entry.role] ?? Bot;
@@ -118,6 +121,7 @@ function TimelineRow({
           </span>
           <span className={statusClass(entry.status)}>
             {AGENT_HISTORY_STATUS_LABEL[entry.status]}
+            {liveWaitLabel ? ` · ${liveWaitLabel}` : ''}
           </span>
           {entry.loopIteration != null && entry.loopIteration > 0 && (
             <span className="agent-history-iter">iter {entry.loopIteration}</span>
@@ -174,6 +178,7 @@ export default function WorkItemAgentHistory({
   loopHistory,
   isBusy = false,
   agentNames,
+  liveWaitLabel,
 }: WorkItemAgentHistoryProps) {
   const model = useMemo(
     () =>
@@ -189,6 +194,9 @@ export default function WorkItemAgentHistory({
 
   const activeRoles = model.roleSnapshots.filter((s) => s.status !== 'idle');
   const hasTimeline = model.entries.length > 0;
+  const liveEntryId = [...model.entries]
+    .reverse()
+    .find((e) => e.status === 'queued' || e.status === 'running')?.id;
 
   return (
     <section className="agent-history" aria-label="Agent history">
@@ -238,7 +246,12 @@ export default function WorkItemAgentHistory({
           </div>
           <ol className="agent-history-timeline">
             {model.entries.map((entry) => (
-              <TimelineRow key={entry.id} entry={entry} agentNames={agentNames} />
+              <TimelineRow
+                key={entry.id}
+                entry={entry}
+                agentNames={agentNames}
+                liveWaitLabel={liveWaitLabel && liveEntryId === entry.id ? liveWaitLabel : null}
+              />
             ))}
           </ol>
         </>

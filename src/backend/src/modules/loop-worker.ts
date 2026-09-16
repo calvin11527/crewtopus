@@ -74,12 +74,34 @@ let processing = false;
 let stopping = false;
 let inFlight: Promise<void> | null = null;
 
+function jobTypeLabel(jobType: LoopJob['jobType']): string {
+  if (jobType === 'story_ba') return 'Business analyst';
+  if (jobType === 'story_pm') return 'Project manager';
+  if (jobType === 'work_item_pipeline') return 'Developer pipeline';
+  if (jobType === 'work_item_agent') return 'Agent run';
+  return 'Job';
+}
+
 async function processJob(job: LoopJob): Promise<void> {
   broadcast({
     type: 'loop:job',
-    payload: { jobId: job.id, workItemId: job.workItemId, status: 'running' },
+    payload: { jobId: job.id, workItemId: job.workItemId, status: 'running', jobType: job.jobType },
     timestamp: now(),
   });
+
+  if (job.workItemId) {
+    const item = getWorkItem(job.workItemId);
+    if (item) {
+      logWorkItemActivity({
+        workItemId: job.workItemId,
+        activityType: 'comment',
+        summary: `${jobTypeLabel(job.jobType)} started on ${item.key}`,
+        agentType: item.assignedAgentType,
+        agentId: item.assignedAgentId,
+        metadata: { event: 'job_running', jobId: job.id, jobType: job.jobType },
+      });
+    }
+  }
 
   try {
     if (job.jobType === 'workflow_execution') {

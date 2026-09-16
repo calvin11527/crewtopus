@@ -67,6 +67,7 @@ export const queryKeys = {
   workItemActivity: (id: string) => ['work-items', id, 'activity'] as const,
   workItemLoop: (id: string) => ['work-items', id, 'loop'] as const,
   workItemDeliverables: (id: string) => ['work-items', id, 'deliverables'] as const,
+  workItemLiveJob: (id: string) => ['work-items', id, 'active-job'] as const,
   fsBrowse: (path?: string) => ['fs', 'browse', path ?? 'home'] as const,
 };
 
@@ -735,6 +736,8 @@ export interface LoopJob {
   error?: string;
   loopRunId?: string;
   jobType?: string;
+  createdAt?: string;
+  startedAt?: string;
 }
 
 export interface RerunReviewOptions {
@@ -886,6 +889,22 @@ export function useLoopJob(jobId: string | null) {
       if (connectionStatus === 'connected') return false;
       const status = query.state.data?.status;
       return status === 'pending' || status === 'running' ? 1500 : false;
+    },
+  });
+}
+
+/** Latest live/failed job for a work item (shift-queued BA included). */
+export function useWorkItemLiveJob(workItemId: string | null) {
+  const connectionStatus = useAppStore((s) => s.connectionStatus);
+  return useQuery<LoopJob | null>({
+    queryKey: queryKeys.workItemLiveJob(workItemId ?? ''),
+    queryFn: () => api.get(`/work-items/${workItemId}/active-job`),
+    enabled: !!workItemId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status === 'pending' || status === 'running') return 1500;
+      if (connectionStatus !== 'connected' && status === 'awaiting_approval') return 4000;
+      return false;
     },
   });
 }

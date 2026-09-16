@@ -164,6 +164,12 @@ export function inferActivityRole(activity: WorkItemActivity): AgentHistoryRole 
   if (event === 'full_lifecycle_pipeline_queued') {
     return 'developer';
   }
+  if (event === 'job_running') {
+    const jobType = metaString(activity, 'jobType') ?? '';
+    if (jobType === 'story_ba') return 'business_analyst';
+    if (jobType === 'story_pm') return 'project_manager';
+    return 'developer';
+  }
 
   if (phase === 'implementation') return 'developer';
   if (phase === 'testing') return 'tester';
@@ -207,6 +213,7 @@ function inferActivityStatus(activity: WorkItemActivity): AgentHistoryStatus {
   if (event === 'approval_required') return 'info';
   if (event === 'approval_resume') return 'queued';
   if (event === 'approval_rejected') return 'failed';
+  if (event === 'job_running') return 'running';
 
   if (
     event === 'agent_queued' ||
@@ -293,7 +300,8 @@ export function isAgentHistoryActivity(activity: WorkItemActivity): boolean {
     event === 'full_lifecycle_no_pipeline_target' ||
     event === 'approval_required' ||
     event === 'approval_resume' ||
-    event === 'approval_rejected'
+    event === 'approval_rejected' ||
+    event === 'job_running'
   );
 }
 

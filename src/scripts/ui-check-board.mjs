@@ -31,7 +31,7 @@ const metrics = await page.evaluate(() => {
     logOverflow: cs(log)?.overflowY,
     bodyOverflow: cs(body)?.overflowY,
     paneOverflow: cs(pane)?.overflow,
-    resizeHandle: !!document.querySelector('.board-detail-resize-handle'),
+    expandToggle: !!document.querySelector('.board-detail-chrome-actions .btn--icon'),
     consoleResize: !!document.querySelector('.agent-console-resize-handle'),
   };
 });

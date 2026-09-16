@@ -28,6 +28,7 @@ import {
   useRerunWorkItemReview,
   useCancelWorkItemLoop,
   useLoopJob,
+  useWorkItemLiveJob,
   useCreatePipelineDemo,
   useRunStoryQueue,
   useStoryQueueRun,
@@ -61,7 +62,7 @@ import SprintTeamPanel from '../components/SprintTeamPanel';
 import LiveFeed from '../components/LiveFeed';
 import BoardEmptyState from '../components/BoardEmptyState';
 import { useWorkItemAgentConsole } from '../hooks/useWorkItemAgentConsole';
-import { useDragResize } from '../hooks/useDragResize';
+
 import { useCliPreviewStore } from '../stores/useCliPreviewStore';
 import { useAppStore } from '../stores/useAppStore';
 import { useSearchParams } from 'react-router';
@@ -71,13 +72,14 @@ import {
   automationPauseLabel,
 } from '../constants/sprint-automation';
 import { isWorkItemBusy, workItemBusyMessage } from '../utils/work-item-busy';
+import { deriveWorkItemNow, useTickingNow } from '../utils/derive-work-item-now';
+import { getWorkItemLifecyclePhase } from '../utils/work-item-agent-history';
 import {
   AGENTS,
   COLUMNS,
   CONSOLE_HEIGHT_KEY,
   DEFAULT_CONSOLE_HEIGHT,
-  DEFAULT_DETAIL_WIDTH,
-  DETAIL_WIDTH_KEY,
+  DETAIL_EXPANDED_KEY,
   SPRINT_STATUSES,
   TYPES,
   LOOP_STATUS_LABEL,
@@ -85,8 +87,10 @@ import {
   activityWorkDir,
   emptyForm,
   emptySprintForm,
+  readStoredBoolean,
   readStoredNumber,
   readStoredSprintSelection,
+  storeBoolean,
   storeNumber,
   storeSprintSelection,
   type ItemFormState,
@@ -165,7 +169,9 @@ export default function Board() {
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const [selected, setSelected] = useState<WorkItem | null>(null);
+  const { data: selectedLiveJob } = useWorkItemLiveJob(selected?.id ?? null);
   const hasAutoOpenedRef = useRef(false);
+  const userDismissedDetailRef = useRef(false);
   const [pipelineResult, setPipelineResult] = useState<PipelineResultState | null>(null);
   const selectedHasPendingJob = selected ? Boolean(pendingJobsByWorkItem[selected.id]) : false;
   const isSelectedBusy =
@@ -204,30 +210,19 @@ export default function Board() {
   const skipSprintRenameCommitRef = useRef(false);
   const cliPreviews = useCliPreviewStore((s) => s.previews);
   const agentStatuses = useAppStore((s) => s.agentStatuses);
-  const [detailWidth, setDetailWidth] = useState(() => readStoredNumber(DETAIL_WIDTH_KEY, DEFAULT_DETAIL_WIDTH));
+  const [detailExpanded, setDetailExpanded] = useState(() => readStoredBoolean(DETAIL_EXPANDED_KEY, false));
   const [consoleHeight, setConsoleHeight] = useState(() =>
     readStoredNumber(CONSOLE_HEIGHT_KEY, DEFAULT_CONSOLE_HEIGHT)
   );
 
-  const persistDetailWidth = useCallback((width: number) => storeNumber(DETAIL_WIDTH_KEY, width), []);
   const persistConsoleHeight = useCallback((height: number) => storeNumber(CONSOLE_HEIGHT_KEY, height), []);
-
-  const setDetailWidthPersisted = useCallback(
-    (width: number) => {
-      const clamped = Math.min(960, Math.max(320, width));
-      setDetailWidth(clamped);
-      persistDetailWidth(clamped);
-    },
-    [persistDetailWidth]
-  );
-
-  const detailResize = useDragResize({
-    axis: 'horizontal',
-    min: 320,
-    max: Math.min(typeof window !== 'undefined' ? window.innerWidth * 0.88 : 900, 960),
-    onResize: setDetailWidth,
-    onCommit: persistDetailWidth,
-  });
+  const toggleDetailExpanded = useCallback(() => {
+    setDetailExpanded((current) => {
+      const next = !current;
+      storeBoolean(DETAIL_EXPANDED_KEY, next);
+      return next;
+    });
+  }, []);
 
   const latestCompleted = useMemo(
     () => activity?.find((a) => a.activityType === 'agent_completed'),
@@ -285,15 +280,20 @@ export default function Board() {
 
   useEffect(() => {
     const itemId = boardUrl.itemId;
-    if (!itemId || !board) return;
+    if (!itemId) {
+      setSelected((current) => (current ? null : current));
+      return;
+    }
+    if (!board) return;
+    userDismissedDetailRef.current = false;
     for (const col of COLUMNS) {
       const found = board.columns[col.id]?.find((i) => i.id === itemId);
       if (found) {
-        if (selected?.id !== found.id) setSelected(found);
+        setSelected((current) => (current?.id === found.id ? current : found));
         return;
       }
     }
-  }, [board, boardUrl.itemId, selected?.id]);
+  }, [board, boardUrl.itemId]);
 
   useEffect(() => {
     if (boardUrl.sprintId === undefined || boardUrl.sprintId === sprintId) return;
@@ -303,6 +303,7 @@ export default function Board() {
 
   useEffect(() => {
     if (!board || selected || hasAutoOpenedRef.current || boardUrl.itemId) return;
+    if (userDismissedDetailRef.current) return;
     const primary =
       runningItems.find((i) => i.loopStatus === 'running') ?? runningItems[0];
     if (primary) {
@@ -330,6 +331,29 @@ export default function Board() {
     workItem: boardItem,
     activity,
   });
+
+  const tickNow = useTickingNow(
+    Boolean(selected) || runningItems.length > 0 || Object.keys(pendingJobsByWorkItem).length > 0
+  );
+
+  const selectedNow = useMemo(() => {
+    if (!boardItem) {
+      return deriveWorkItemNow({
+        item: { key: '', status: 'todo', loopStatus: 'idle', assignedAgentType: undefined },
+      });
+    }
+    const job =
+      selectedLiveJob ??
+      (activeJobId && polledJob && (polledJob.workItemId === boardItem.id || !polledJob.workItemId)
+        ? polledJob
+        : null);
+    return deriveWorkItemNow({
+      item: boardItem,
+      job,
+      hasCliOutput: agentConsole.entries.some((e) => e.stream === 'stdout' || e.stream === 'stderr'),
+      nowMs: tickNow,
+    });
+  }, [boardItem, selectedLiveJob, activeJobId, polledJob, agentConsole.entries, tickNow]);
 
   const focusedProjectPath = useMemo(() => {
     if (!boardItem?.workspaceId || !selectedWorkspaceRepos?.length) return null;
@@ -957,16 +981,18 @@ export default function Board() {
   }, [polledJob, activeJobId, clearPendingJob, qc]);
 
   const openItem = (item: WorkItem) => {
+    userDismissedDetailRef.current = false;
     setSelected(item);
     setLastAgentOutput(null);
     setPipelineResult(null);
     setSearchParams((prev) => buildBoardSearchParams(prev, { item: item.id }), { replace: false });
   };
 
-  const closeDetail = () => {
+  const closeDetail = useCallback(() => {
+    userDismissedDetailRef.current = true;
     setSelected(null);
-    setSearchParams((prev) => buildBoardSearchParams(prev, { item: null }), { replace: false });
-  };
+    setSearchParams((prev) => buildBoardSearchParams(prev, { item: null }), { replace: true });
+  }, [setSearchParams]);
 
   const renderItemForm = (mode: 'create' | 'edit') => (
     <div className="form-stack">
@@ -1387,14 +1413,16 @@ export default function Board() {
               Agents working
             </span>
             <span className="board-agents-working-banner-meta">
-              {[
-                stepLabel,
-                focusKey ? `on ${focusKey}` : null,
-                queueResult?.bootstrapped ? 'sprint bootstrap' : null,
-                runningItems.length > 1 ? `${runningItems.length} items in progress` : null,
-              ]
-                .filter(Boolean)
-                .join(' · ') || 'Live run in progress — open a card or watch Live Activity'}
+              {(selectedNow.visible && boardItem ? selectedNow.bannerLine : null) ||
+                [
+                  stepLabel,
+                  focusKey ? `on ${focusKey}` : null,
+                  queueResult?.bootstrapped ? 'sprint bootstrap' : null,
+                  runningItems.length > 1 ? `${runningItems.length} items in progress` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ') ||
+                'Live run in progress — open a card or watch Live Activity'}
             </span>
             {focusKey && boardItem?.key !== focusKey && runningItems[0] && (
               <button
@@ -1432,7 +1460,9 @@ export default function Board() {
               Object.values(agentStatuses).some((s) => s === 'running')
             }
             workingLabel={
-              queueResult?.mode === 'full_lifecycle'
+              selectedNow.visible
+                ? selectedNow.bannerLine
+                : queueResult?.mode === 'full_lifecycle'
                 ? [
                     queueResult.bootstrapped ? 'Empty sprint bootstrap' : 'Full lifecycle',
                     queueResult.step === 'ba'
@@ -1516,6 +1546,33 @@ export default function Board() {
                         onEdit={openEdit}
                         onDelete={setDeleteTarget}
                         onMove={(next, status) => void applyMove(next, status)}
+                        nowLine={
+                          selected?.id === item.id && selectedNow.visible
+                            ? selectedNow.cardLine
+                            : deriveWorkItemNow({
+                                item,
+                                job: itemHasActiveJob(item.id)
+                                  ? {
+                                      id: pendingJobsByWorkItem[item.id] ?? 'queued',
+                                      status:
+                                        item.loopStatus === 'awaiting_approval'
+                                          ? 'awaiting_approval'
+                                          : 'pending',
+                                      jobType:
+                                        getWorkItemLifecyclePhase(item) === 'ba_pending'
+                                          ? 'story_ba'
+                                          : getWorkItemLifecyclePhase(item) === 'pm_pending'
+                                            ? 'story_pm'
+                                            : 'work_item_pipeline',
+                                      createdAt: item.updatedAt,
+                                    }
+                                  : item.loopStatus === 'awaiting_approval' ||
+                                      item.loopStatus === 'failed'
+                                    ? { id: item.id, status: item.loopStatus, jobType: 'story_ba' }
+                                    : null,
+                                nowMs: tickNow,
+                              }).cardLine
+                        }
                       />
                     ))}
                   </div>
@@ -1529,12 +1586,9 @@ export default function Board() {
         {selected && boardItem && (
           <WorkItemDetail
             boardItem={boardItem}
-            detailWidth={detailWidth}
-            onResizePointerDown={(e, width) => detailResize.startDrag(e, width)}
-            onResizePointerMove={detailResize.onDrag}
-            onResizePointerUp={detailResize.endDrag}
+            expanded={detailExpanded}
+            onToggleExpanded={toggleDetailExpanded}
             onClose={closeDetail}
-            onSetWidth={setDetailWidthPersisted}
             detailBusy={detailBusy}
             onRerunReview={(next) => void handleRerunReview(next)}
             onRunLifecycle={(next) => void handleRunLifecycle(next)}
@@ -1566,6 +1620,10 @@ export default function Board() {
             pipelineResult={pipelineResult}
             latestAgentResult={latestAgentResult}
             latestCompleted={latestCompleted}
+            now={selectedNow}
+            onRetry={(next) =>
+              next.type === 'story' ? void handleRunLifecycle(next) : void handleRunPipeline(next)
+            }
           />
         )}
       </div>

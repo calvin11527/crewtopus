@@ -5,6 +5,7 @@ import type { WorkItemStatus } from '../types';
 import { getWorkItem, updateWorkItem } from './work-items';
 import { logWorkItemActivity } from './work-item-activity';
 import { envString } from '../utils/env';
+import { broadcast } from '../websocket';
 
 
 export type LoopJobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'awaiting_approval';
@@ -105,7 +106,18 @@ function insertLoopJob(
   pushToRedis(id).catch(() => {
     /* optional redis */
   });
-  return getLoopJob(id)!;
+  const job = getLoopJob(id)!;
+  broadcast({
+    type: 'loop:job',
+    payload: {
+      jobId: job.id,
+      workItemId: job.workItemId,
+      status: 'pending',
+      jobType: job.jobType,
+    },
+    timestamp: timestamp,
+  });
+  return job;
 }
 
 /** Enqueue a saved workflow definition to run through the same worker as board loops. */
@@ -195,6 +207,36 @@ export function requeueLoopJob(job: LoopJob, payloadPatch: Record<string, unknow
 export function getLoopJob(id: string): LoopJob | null {
   const row = getDatabase().prepare('SELECT * FROM loop_job WHERE id = ?').get(id) as LoopJobRow | undefined;
   return row ? mapJob(row) : null;
+}
+
+/** Latest job for a work item (any status). */
+export function getLatestJobForWorkItem(workItemId: string): LoopJob | null {
+  const row = getDatabase()
+    .prepare(
+      `SELECT * FROM loop_job
+       WHERE work_item_id = ?
+       ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(workItemId) as LoopJobRow | undefined;
+  return row ? mapJob(row) : null;
+}
+
+/**
+ * Job the UI should show as "now": open (pending/running/awaiting_approval)
+ * or the latest failure so Stopped is visible.
+ */
+export function getWorkItemLiveJob(workItemId: string): LoopJob | null {
+  const latest = getLatestJobForWorkItem(workItemId);
+  if (!latest) return null;
+  if (
+    latest.status === 'pending' ||
+    latest.status === 'running' ||
+    latest.status === 'awaiting_approval' ||
+    latest.status === 'failed'
+  ) {
+    return latest;
+  }
+  return null;
 }
 
 /** Pending or running job for a work item (at most one active run). */
