@@ -17,6 +17,8 @@ export class ClaudeAdapter implements AgentAdapter {
     const args = appendClaudePermissionArgs(['-p', prompt], input);
     const model = input.config?.model as string | undefined;
     if (model) args.push('--model', model);
+    const effort = typeof input.config?.effort === 'string' ? input.config.effort.trim() : '';
+    if (effort) args.push('--effort', effort);
     const cwd = input.config?.cwd as string | undefined;
     const streamCtx = input.config?.cliStream as CliStreamContext | undefined;
     const streamOpts = resolveCliStreamOptions(input, 'claude');

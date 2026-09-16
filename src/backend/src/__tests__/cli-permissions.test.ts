@@ -68,6 +68,23 @@ describe('cli-permissions', () => {
     expect(args).not.toContain('--allow-all-paths');
   });
 
+  it('adds copilot --yolo when alwaysApprove is set', () => {
+    const args = appendCopilotPermissionArgs(
+      ['-p', 'hello'],
+      baseInput({ config: { alwaysApprove: true } })
+    );
+    expect(args).toEqual(expect.arrayContaining(['--allow-all-tools', '--yolo']));
+  });
+
+  it('adds claude --dangerously-skip-permissions when alwaysApprove is set', () => {
+    const args = appendClaudePermissionArgs(
+      ['-p', 'hello'],
+      baseInput({ config: { alwaysApprove: true, capability: 'review' } })
+    );
+    expect(args).toContain('--dangerously-skip-permissions');
+    expect(args).not.toContain('--permission-mode');
+  });
+
   it('grants write access for BA analysis and PM planning', () => {
     const cwd = '/tmp/agenthub-work/AH-69';
     for (const capability of ['analysis', 'planning'] as const) {

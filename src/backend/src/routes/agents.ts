@@ -25,6 +25,7 @@ import {
   type ProviderUsageSyncOptions,
 } from '../modules/agent-credits';
 import { forceProviderRescan, getUsageSyncMeta } from '../modules/usage-meter';
+import { validateAlwaysApproveConfig, validateEffortConfig } from '../modules/agent-run-options';
 import {
   generateUsageBasedSuggestions,
   listCapabilityFacts,
@@ -432,6 +433,20 @@ router.patch('/:id', (req: Request, res: Response) => {
       return;
     }
   }
+  if ('effort' in configPatch) {
+    const effortError = validateEffortConfig(configPatch.effort);
+    if (effortError) {
+      res.status(400).json({ message: effortError });
+      return;
+    }
+  }
+  if ('alwaysApprove' in configPatch) {
+    const approveError = validateAlwaysApproveConfig(configPatch.alwaysApprove);
+    if (approveError) {
+      res.status(400).json({ message: approveError });
+      return;
+    }
+  }
 
   try {
     let agent = updateAgent(req.params.id, {
@@ -480,6 +495,20 @@ router.patch('/:id/config', (req: Request, res: Response) => {
     const pct = body.providerUsagePercent;
     if (typeof pct !== 'number' || !Number.isFinite(pct) || pct < 0 || pct > 100) {
       res.status(400).json({ message: 'providerUsagePercent must be between 0 and 100' });
+      return;
+    }
+  }
+  if ('effort' in body) {
+    const effortError = validateEffortConfig(body.effort);
+    if (effortError) {
+      res.status(400).json({ message: effortError });
+      return;
+    }
+  }
+  if ('alwaysApprove' in body) {
+    const approveError = validateAlwaysApproveConfig(body.alwaysApprove);
+    if (approveError) {
+      res.status(400).json({ message: approveError });
       return;
     }
   }

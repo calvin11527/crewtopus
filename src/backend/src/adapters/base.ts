@@ -1,4 +1,8 @@
 import { spawn, ChildProcess } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { randomUUID } from 'crypto';
 import type { AgentType } from '../types';
 import type { ContextScope } from '../types';
 import {
@@ -113,6 +117,60 @@ export interface SpawnCliResult {
 
 const KILL_GRACE_MS = 3000;
 
+/**
+ * Soft cap for `spawn(command, args)` command lines.
+ * Windows CreateProcess is 32767 chars; quoting can roughly double payload size.
+ */
+export const SPAWN_CMDLINE_SOFT_MAX = 24_000;
+
+/** Conservative length of the command line Node will pass to the OS. */
+export function estimateSpawnCommandLineLength(command: string, args: string[]): number {
+  const quoted = (value: string) => 2 + value.length * 2;
+  return quoted(command) + args.reduce((total, arg) => total + 1 + quoted(arg), 0);
+}
+
+export function spawnCommandLineTooLong(command: string, args: string[]): boolean {
+  return estimateSpawnCommandLineLength(command, args) > SPAWN_CMDLINE_SOFT_MAX;
+}
+
+export function writeTempPromptFile(prompt: string): string {
+  const filePath = path.join(os.tmpdir(), `crewtopus-prompt-${randomUUID()}.txt`);
+  fs.writeFileSync(filePath, prompt, 'utf8');
+  return filePath;
+}
+
+export function removeTempPromptFile(filePath?: string): void {
+  if (!filePath) return;
+  try {
+    fs.unlinkSync(filePath);
+  } catch {
+    /* already removed */
+  }
+}
+
+export interface PromptSpawnArgs {
+  args: string[];
+  promptFile?: string;
+}
+
+/**
+ * Use `-p <prompt>` when the argv is short enough; otherwise write a temp file
+ * and pass `--prompt-file` so Windows spawn does not fail with ENAMETOOLONG.
+ */
+export function resolvePromptSpawnArgs(
+  command: string,
+  prompt: string,
+  restArgs: string[],
+  promptFileFlag = '--prompt-file'
+): PromptSpawnArgs {
+  const inline = ['-p', prompt, ...restArgs];
+  if (!spawnCommandLineTooLong(command, inline)) {
+    return { args: inline };
+  }
+  const promptFile = writeTempPromptFile(prompt);
+  return { args: [promptFileFlag, promptFile, ...restArgs], promptFile };
+}
+
 function killProcessTree(proc: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
   if (!proc.pid) return;
   if (process.platform !== 'win32') {
@@ -135,11 +193,18 @@ export function spawnCli(
   options?: SpawnCliOptions
 ): Promise<SpawnCliResult> {
   return new Promise((resolve, reject) => {
-    const proc: ChildProcess = spawn(command, args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      detached: process.platform !== 'win32',
-      env: { ...process.env, FORCE_COLOR: '0' },
-    });
+    let proc: ChildProcess;
+    try {
+      proc = spawn(command, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
+        env: { ...process.env, FORCE_COLOR: '0' },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      reject(new Error(`Failed to spawn "${command}": ${message}`));
+      return;
+    }
 
     let stdout = '';
     let stderr = '';

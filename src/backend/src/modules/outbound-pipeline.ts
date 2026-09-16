@@ -21,6 +21,7 @@ import { getWorkItem } from './work-items';
 import { assertAgentTypeWithinBudget } from './agent-credits';
 import { resolveOutboundAgentType } from './adapter-failover';
 import { resolveModelForAgent } from './agent-models';
+import { resolveAgentEffort, resolveAlwaysApprove } from './agent-run-options';
 import { recordRunUsage, isProviderThrottleError, recordProviderThrottle } from './usage-meter';
 import { recordRunLearning } from './capability-learning';
 import { incrementCounter } from '../metrics';
@@ -148,6 +149,8 @@ async function executeAdapterOnce(
 ): Promise<AdapterOutput> {
   const adapter = getAdapter(effectiveType);
   const model = resolveModelForAgent(request.agentId, effectiveType);
+  const effort = resolveAgentEffort(request.agentId, effectiveType);
+  const alwaysApprove = resolveAlwaysApprove(request.agentId, effectiveType);
   return adapter.execute({
     prompt: request.prompt,
     contextScope: effectiveScope,
@@ -158,6 +161,8 @@ async function executeAdapterOnce(
       permissionMode: resolvePermissionMode(profile, request.pipelinePhase, request.capability),
       maxOutputBytes: profile.cliMaxOutputBytes,
       model,
+      effort,
+      alwaysApprove,
       cliStream: request.workItemId
         ? {
             workItemId: request.workItemId,

@@ -6,6 +6,8 @@ import {
   estimateTokens,
   resolveCliStreamOptions,
   spawnCli,
+  resolvePromptSpawnArgs,
+  removeTempPromptFile,
   type SpawnCliOptions,
 } from './base';
 import { endCliStream, type CliStreamContext } from '../modules/cli-stream';
@@ -164,7 +166,11 @@ export class GrokAdapter implements AgentAdapter {
       input.config?.permissionMode != null
         ? normalizeGrokPermissionMode(String(input.config.permissionMode))
         : resolveGrokPermissionMode(capability, cwd);
-    const alwaysApprove = process.env.GROK_ALWAYS_APPROVE !== 'false';
+    const alwaysApprove =
+      typeof input.config?.alwaysApprove === 'boolean'
+        ? input.config.alwaysApprove
+        : process.env.GROK_ALWAYS_APPROVE !== 'false';
+    const effort = typeof input.config?.effort === 'string' ? input.config.effort.trim() : '';
     const timeoutMs = Number(process.env.GROK_TIMEOUT_MS) || 180_000;
 
     const streamCtx = input.config?.cliStream as CliStreamContext | undefined;
@@ -175,9 +181,7 @@ export class GrokAdapter implements AgentAdapter {
         ? wrapGrokStreamHandlers(streamOpts)
         : streamOpts;
 
-    const args = [
-      '-p',
-      prompt,
+    const restArgs = [
       '--output-format',
       outputFormat,
       '--no-alt-screen',
@@ -185,13 +189,16 @@ export class GrokAdapter implements AgentAdapter {
       permissionMode,
     ];
 
-    if (alwaysApprove) args.push('--always-approve');
+    if (alwaysApprove) restArgs.push('--always-approve');
+    if (effort) restArgs.push('--effort', effort);
     const model = input.config?.model as string | undefined;
-    if (model) args.push('--model', model);
+    if (model) restArgs.push('--model', model);
     if (cwd) {
       fs.mkdirSync(cwd, { recursive: true });
-      args.push('--cwd', cwd);
+      restArgs.push('--cwd', cwd);
     }
+
+    const { args, promptFile } = resolvePromptSpawnArgs(command, prompt, restArgs);
 
     try {
       const result = await spawnCli(command, args, undefined, timeoutMs, effectiveStreamOpts);
@@ -223,6 +230,7 @@ export class GrokAdapter implements AgentAdapter {
         },
       };
     } finally {
+      removeTempPromptFile(promptFile);
       if (streamCtx?.workItemId) {
         endCliStream(streamCtx.workItemId, {
           agentType: 'grok',

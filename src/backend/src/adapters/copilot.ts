@@ -49,6 +49,8 @@ export class CopilotAdapter implements AgentAdapter {
     const runOnce = async (modelId: string) => {
       const args = appendCopilotPermissionArgs(['-p', prompt], input);
       if (modelId) args.push('--model', modelId);
+      const effort = typeof input.config?.effort === 'string' ? input.config.effort.trim() : '';
+      if (effort) args.push('--effort', effort);
       return spawnCli(this.command, args, undefined, timeoutMs, streamOpts);
     };
 

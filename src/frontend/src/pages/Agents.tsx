@@ -35,6 +35,19 @@ const HIRE_ROLES: AgentRole[] = [
 
 const DEFAULT_HOURS: WorkingHoursBlock = { dow: [1, 2, 3, 4, 5], start: '09:00', end: '17:00' };
 
+const EFFORT_OPTIONS: { id: string; label: string }[] = [
+  { id: '', label: 'Provider default' },
+  { id: 'low', label: 'Low — faster, lighter reasoning' },
+  { id: 'medium', label: 'Medium — balanced' },
+  { id: 'high', label: 'High — deeper reasoning' },
+  { id: 'xhigh', label: 'Extra high — maximum reasoning' },
+];
+
+function defaultAlwaysApprove(type: AgentType, config?: Record<string, unknown>): boolean {
+  if (typeof config?.alwaysApprove === 'boolean') return config.alwaysApprove;
+  return type === 'grok';
+}
+
 const DAY_OPTIONS: { dow: number; label: string }[] = [
   { dow: 0, label: 'Sun' },
   { dow: 1, label: 'Mon' },
@@ -98,6 +111,9 @@ export default function Agents() {
   const [clearTokenQuota, setClearTokenQuota] = useState(false);
   const [showLimits, setShowLimits] = useState(false);
   const [confirmTypeSwitch, setConfirmTypeSwitch] = useState(false);
+  const [effortDraft, setEffortDraft] = useState('');
+  const [alwaysApproveDraft, setAlwaysApproveDraft] = useState(false);
+  const [confirmAlwaysApprove, setConfirmAlwaysApprove] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<AgentType | 'all'>('all');
 
@@ -294,6 +310,9 @@ export default function Agents() {
     setTypeDraft(agent.type);
     setNameDraft(agent.name);
     setModelDraft(configured || defaultModel);
+    setEffortDraft(typeof agent.config.effort === 'string' ? agent.config.effort : '');
+    setAlwaysApproveDraft(defaultAlwaysApprove(agent.type, agent.config));
+    setConfirmAlwaysApprove(false);
     setCreditLimitDraft(creditLimit !== undefined ? String(creditLimit) : '');
     setTokenQuotaDraft(tokenQuota !== undefined ? String(tokenQuota) : '');
     setClearTokenQuota(false);
@@ -320,6 +339,8 @@ export default function Agents() {
     const defaultModel = models.find((m) => m.isDefault)?.id ?? models[0]?.id ?? '';
     setModelDraft(defaultModel);
     setConfirmTypeSwitch(false);
+    setAlwaysApproveDraft(defaultAlwaysApprove(nextType));
+    setConfirmAlwaysApprove(false);
   };
 
   const configuringLiveStatus =
@@ -345,8 +366,18 @@ export default function Agents() {
       return;
     }
 
+    const alreadyAlwaysOn = defaultAlwaysApprove(configuringAgent.type, configuringAgent.config);
+    if (alwaysApproveDraft && !alreadyAlwaysOn && !confirmAlwaysApprove) {
+      setConfigError(
+        'Confirm always-approve: this agent can run tools and write files without further prompts.'
+      );
+      return;
+    }
+
     const config: Record<string, unknown> = {};
     if (modelDraft.trim()) config.model = modelDraft.trim();
+    config.effort = effortDraft.trim() ? effortDraft.trim() : null;
+    config.alwaysApprove = alwaysApproveDraft;
 
     if (showLimits) {
       const creditRaw = creditLimitDraft.trim();
@@ -406,6 +437,10 @@ export default function Agents() {
 
   const typeChanged =
     configuringAgent !== null && typeDraft !== configuringAgent.type;
+  const needsAlwaysApproveConfirm =
+    configuringAgent !== null &&
+    alwaysApproveDraft &&
+    !defaultAlwaysApprove(configuringAgent.type, configuringAgent.config);
 
   return (
     <div id="page-agents" className="page page--agents">
@@ -811,6 +846,54 @@ export default function Agents() {
             </div>
 
             <div className="agent-configure-section">
+              <h4 className="agent-configure-section__title">Run options</h4>
+              <label>
+                Reasoning effort
+                <select
+                  className="input"
+                  value={effortDraft}
+                  onChange={(e) => setEffortDraft(e.target.value)}
+                >
+                  {EFFORT_OPTIONS.map((option) => (
+                    <option key={option.id || 'default'} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="text-muted agent-configure-help">
+                Passed to Grok as <code>--effort</code>, and to Copilot/Claude when they accept the
+                same flag. Extra high is ignored by models that do not support it.
+              </p>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={alwaysApproveDraft}
+                  onChange={(e) => {
+                    setAlwaysApproveDraft(e.target.checked);
+                    setConfirmAlwaysApprove(false);
+                  }}
+                />
+                Always approve tool executions
+              </label>
+              <p className="text-muted agent-configure-help">
+                Skips CLI permission prompts (Grok <code>--always-approve</code>, Copilot{' '}
+                <code>--yolo</code>, Claude <code>--dangerously-skip-permissions</code>). Enable only
+                on a trusted machine and repo.
+              </p>
+              {needsAlwaysApproveConfirm && (
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={confirmAlwaysApprove}
+                    onChange={(e) => setConfirmAlwaysApprove(e.target.checked)}
+                  />
+                  I understand this agent can run commands and edit files without further prompts
+                </label>
+              )}
+            </div>
+
+            <div className="agent-configure-section">
               <button
                 type="button"
                 className="agents-section-toggle agents-section-toggle--subtle"
@@ -870,7 +953,8 @@ export default function Agents() {
                 disabled={
                   updateAgent.isPending ||
                   (typeChanged && configuringIsRunning) ||
-                  (typeChanged && !confirmTypeSwitch)
+                  (typeChanged && !confirmTypeSwitch) ||
+                  (needsAlwaysApproveConfirm && !confirmAlwaysApprove)
                 }
               >
                 {typeChanged

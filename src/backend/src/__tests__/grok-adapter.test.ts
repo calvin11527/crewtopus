@@ -8,6 +8,13 @@ import {
 } from '../adapters/grok';
 import type { SpawnCliOptions } from '../adapters/base';
 import * as base from '../adapters/base';
+import {
+  estimateSpawnCommandLineLength,
+  resolvePromptSpawnArgs,
+  removeTempPromptFile,
+  SPAWN_CMDLINE_SOFT_MAX,
+} from '../adapters/base';
+import fs from 'fs';
 
 describe('GrokAdapter', () => {
   const adapter = new GrokAdapter();
@@ -58,6 +65,45 @@ describe('GrokAdapter', () => {
       expect(resolveGrokOutputFormat(opts)).toBe('streaming-json');
       expect(resolveGrokOutputFormat(undefined)).toBe('json');
     });
+  });
+
+  it('passes --effort when configured', async () => {
+    jest.spyOn(base, 'spawnCli').mockResolvedValue({
+      stdout: '{"text":"Done","stopReason":"EndTurn"}',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    await adapter.execute({
+      prompt: 'Hello',
+      contextScope: { files: [], diffs: [], symbols: [], maxTokens: 8000, sensitivityLevel: 0 },
+      config: { effort: 'high' },
+    });
+
+    expect(base.spawnCli).toHaveBeenCalledWith(
+      'grok',
+      expect.arrayContaining(['--effort', 'high']),
+      undefined,
+      180_000,
+      undefined
+    );
+  });
+
+  it('omits --always-approve when alwaysApprove is false', async () => {
+    jest.spyOn(base, 'spawnCli').mockResolvedValue({
+      stdout: '{"text":"Done","stopReason":"EndTurn"}',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    await adapter.execute({
+      prompt: 'Hello',
+      contextScope: { files: [], diffs: [], symbols: [], maxTokens: 8000, sensitivityLevel: 0 },
+      config: { alwaysApprove: false },
+    });
+
+    const args = (base.spawnCli as jest.Mock).mock.calls[0][1] as string[];
+    expect(args).not.toContain('--always-approve');
   });
 
   it('should pass --model when configured on the agent', async () => {
@@ -227,6 +273,28 @@ describe('GrokAdapter', () => {
     );
   });
 
+  it('writes long prompts to --prompt-file instead of -p', async () => {
+    jest.spyOn(base, 'spawnCli').mockResolvedValue({
+      stdout: '{"text":"Done","stopReason":"EndTurn"}',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    const huge = `Implement the story.\n${'A'.repeat(20_000)}`;
+    await adapter.execute({
+      prompt: huge,
+      contextScope: { files: [], diffs: [], symbols: [], maxTokens: 8000, sensitivityLevel: 0 },
+      config: { cwd: '/tmp/grok-test' },
+    });
+
+    const args = (base.spawnCli as jest.Mock).mock.calls[0][1] as string[];
+    expect(args).toContain('--prompt-file');
+    expect(args).not.toContain('-p');
+    expect(args.join('\0')).not.toContain(huge);
+    const fileFlag = args.indexOf('--prompt-file');
+    expect(args[fileFlag + 1]).toMatch(/crewtopus-prompt-/);
+  });
+
   it('should throw when grok returns empty output', async () => {
     jest.spyOn(base, 'spawnCli').mockResolvedValue({
       stdout: '',
@@ -240,5 +308,26 @@ describe('GrokAdapter', () => {
         contextScope: { files: [], diffs: [], symbols: [], maxTokens: 8000, sensitivityLevel: 0 },
       })
     ).rejects.toThrow('empty output');
+  });
+});
+
+describe('resolvePromptSpawnArgs', () => {
+  it('keeps short prompts on -p', () => {
+    const resolved = resolvePromptSpawnArgs('grok', 'hello', ['--cwd', '/tmp']);
+    expect(resolved.args).toEqual(['-p', 'hello', '--cwd', '/tmp']);
+    expect(resolved.promptFile).toBeUndefined();
+  });
+
+  it('switches to --prompt-file before the spawn command line overflows', () => {
+    const huge = 'X'.repeat(20_000);
+    const resolved = resolvePromptSpawnArgs('grok', huge, ['--output-format', 'json']);
+    expect(resolved.promptFile).toBeTruthy();
+    expect(resolved.args[0]).toBe('--prompt-file');
+    expect(resolved.args).not.toContain('-p');
+    expect(fs.existsSync(resolved.promptFile!)).toBe(true);
+    expect(fs.readFileSync(resolved.promptFile!, 'utf8')).toBe(huge);
+    expect(estimateSpawnCommandLineLength('grok', resolved.args)).toBeLessThan(SPAWN_CMDLINE_SOFT_MAX);
+    removeTempPromptFile(resolved.promptFile);
+    expect(fs.existsSync(resolved.promptFile!)).toBe(false);
   });
 });

@@ -53,12 +53,15 @@ export function appendCopilotPermissionArgs(args: string[], input: AdapterInput)
     }
   }
 
-  if (writable || process.env.COPILOT_ALLOW_ALL === 'true') {
+  const alwaysApprove = input.config?.alwaysApprove === true;
+
+  if (writable || alwaysApprove || process.env.COPILOT_ALLOW_ALL === 'true') {
     args.push('--allow-all-tools');
     if (process.env.COPILOT_ALLOW_ALL_PATHS !== 'false') {
       args.push('--allow-all-paths');
     }
-  } else if (process.env.COPILOT_YOLO === 'true') {
+  }
+  if (alwaysApprove || process.env.COPILOT_YOLO === 'true') {
     args.push('--yolo');
   }
 
@@ -79,7 +82,11 @@ export function appendClaudePermissionArgs(args: string[], input: AdapterInput):
     }
   }
 
-  if (writable || permissionMode === 'bypassPermissions') {
+  const alwaysApprove = input.config?.alwaysApprove === true;
+
+  if (alwaysApprove) {
+    args.push('--dangerously-skip-permissions');
+  } else if (writable || permissionMode === 'bypassPermissions') {
     args.push('--permission-mode', 'bypassPermissions');
   } else if (permissionMode === 'plan' || permissionMode === 'readOnly') {
     args.push('--permission-mode', 'plan');
