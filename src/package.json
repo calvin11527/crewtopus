@@ -55,14 +55,14 @@
     "clean": "rm -rf node_modules backend/node_modules frontend/node_modules backend/dist frontend/dist"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.2.5"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "brace-expansion": "5.0.9",
-    "playwright": "^1.61.1"
+    "brace-expansion": "5.0.12",
+    "playwright": "^1.64.0"
   },
   "overrides": {
     "shell-quote": "1.9.0",
@@ -70,7 +70,7 @@
     "dompurify": "3.4.14",
     "uuid": "11.1.1",
     "esbuild": "0.28.2",
-    "brace-expansion": "5.0.9",
+    "brace-expansion": "5.0.12",
     "minimatch": "10.2.5",
     "react-router": "8.3.1"
   }
