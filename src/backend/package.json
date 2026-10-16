@@ -1,6 +1,6 @@
 {
   "name": "crewtopus-backend",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Crewtopus Backend API",
   "main": "dist/index.js",
   "scripts": {
@@ -23,7 +23,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.9",
     "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.6",
+    "@types/express": "^4.17.21",
     "@types/jest": "^29.5.14",
     "@types/node": "^20.12.7",
     "@types/node-cron": "^3.0.11",
