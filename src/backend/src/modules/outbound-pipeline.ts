@@ -66,7 +66,10 @@ export class AgentUnavailableError extends Error {
   readonly agentType: AgentType;
 
   constructor(agentType: AgentType) {
-    super(`Agent "${agentType}" is not available on this host (CLI missing or not authenticated)`);
+    super(
+      `CLI missing for "${agentType}" (not installed, not on PATH, or not authenticated). ` +
+        `Open Agents and switch this role to an installed adapter. Mock needs no paid CLI.`
+    );
     this.name = 'AgentUnavailableError';
     this.agentType = agentType;
   }

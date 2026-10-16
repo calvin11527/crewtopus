@@ -137,4 +137,18 @@ describe('Work Items (Agile/Scrum)', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
     delete process.env.AGENTHUB_WORK_DIR;
   });
+
+  it('stores one automatic pass by default and clamps edits to 3', () => {
+    const item = createWorkItem({ type: 'task', title: 'Pass cap' });
+    expect(item.maxLoopIterations).toBe(1);
+
+    const raised = updateWorkItem(item.id, { maxLoopIterations: 3 });
+    expect(raised?.maxLoopIterations).toBe(3);
+
+    const clamped = updateWorkItem(item.id, { maxLoopIterations: 9 });
+    expect(clamped?.maxLoopIterations).toBe(3);
+
+    const createdHigh = createWorkItem({ type: 'story', title: 'Too many', maxLoopIterations: 6 });
+    expect(createdHigh.maxLoopIterations).toBe(3);
+  });
 });

@@ -16,6 +16,18 @@ export const SPRINT_SELECTION_KEY = 'agenthub.board.selectedSprint';
 export const SPRINT_SELECTION_ALL = '__all__';
 export const DEFAULT_DETAIL_WIDTH = 460;
 export const DEFAULT_CONSOLE_HEIGHT = 240;
+/** One implement → test → review pass unless the person raises it. */
+export const DEFAULT_MAX_LOOP_ITERATIONS = 1;
+/** Highest automatic pass count the board will save. */
+export const MAX_USER_LOOP_ITERATIONS = 3;
+
+export function clampLoopPasses(value: number | undefined | null): number {
+  if (value == null || !Number.isFinite(value)) return DEFAULT_MAX_LOOP_ITERATIONS;
+  const rounded = Math.trunc(value);
+  if (rounded < 1) return 1;
+  if (rounded > MAX_USER_LOOP_ITERATIONS) return MAX_USER_LOOP_ITERATIONS;
+  return rounded;
+}
 
 export function readStoredNumber(key: string, fallback: number): number {
   try {
@@ -165,6 +177,7 @@ export interface ItemFormState {
   agent: AgentType;
   description: string;
   workspaceId: string;
+  maxLoopIterations: number;
 }
 
 export const emptyForm = (): ItemFormState => ({
@@ -173,4 +186,5 @@ export const emptyForm = (): ItemFormState => ({
   agent: 'mock',
   description: '',
   workspaceId: '',
+  maxLoopIterations: DEFAULT_MAX_LOOP_ITERATIONS,
 });

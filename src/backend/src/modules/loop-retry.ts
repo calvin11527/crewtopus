@@ -1,5 +1,6 @@
 import type { LoopJob } from './job-queue';
 import type { LoopStatus, WorkItem } from '../types';
+import { explicitLoopIterations } from '../types';
 import { getAuditEntry } from './audit-logger';
 import { enqueueWorkItemPipeline, getActiveJobForWorkItem } from './job-queue';
 import { listWorkItemActivity, logWorkItemActivity } from './work-item-activity';
@@ -155,7 +156,9 @@ export function buildLoopRetryPayload(
   const escalationContext = needsContext ? getEscalationRetryContext(workItemId) ?? undefined : undefined;
 
   return {
-    maxIterations: options.maxIterations ?? (retryMode === 'review_only' ? 1 : 3),
+    ...explicitLoopIterations(
+      options.maxIterations != null ? options.maxIterations : retryMode === 'review_only' ? 1 : undefined
+    ),
     autoLoop: options.autoLoop ?? retryMode !== 'review_only',
     demo: options.demo,
     retryMode,

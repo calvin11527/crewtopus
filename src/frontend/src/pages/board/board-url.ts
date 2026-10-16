@@ -4,6 +4,8 @@ export interface BoardUrlState {
   /** `undefined` = auto active sprint; `null` = All items; string = sprint id. */
   sprintId: string | null | undefined;
   itemId: string | null;
+  /** `?demo=1` starts the mock multi-agent demo once. */
+  demo: boolean;
 }
 
 export function parseBoardSearchParams(search: URLSearchParams): BoardUrlState {
@@ -17,6 +19,7 @@ export function parseBoardSearchParams(search: URLSearchParams): BoardUrlState {
   return {
     sprintId,
     itemId: itemRaw && itemRaw.trim() ? itemRaw.trim() : null,
+    demo: search.get('demo') === '1',
   };
 }
 

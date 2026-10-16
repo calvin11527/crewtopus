@@ -70,6 +70,7 @@ describe('Work Item Pipeline (Grok → Copilot)', () => {
     expect(wf?.definition.loops?.[0].steps[1].capability).toBe('testing');
     expect(wf?.definition.loops?.[0].steps[2].agent).toBe('copilot');
     expect(wf?.definition.loops?.[0].until).toBe('eval_pass');
+    expect(wf?.definition.loops?.[0].maxIterations).toBe(1);
     expect(wf?.definition.loops?.[0].evals?.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -110,6 +111,29 @@ describe('Work Item Pipeline (Grok → Copilot)', () => {
     const activity = listWorkItemActivity(item.id);
     expect(activity.filter((a) => a.activityType === 'agent_started').length).toBeGreaterThanOrEqual(3);
     expect(activity.some((a) => a.summary.includes('auto-triggered'))).toBe(true);
+    delete process.env.AGENTHUB_WORK_DIR;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('stops after one pass when the work item keeps the default cap', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pipe-once-'));
+    process.env.AGENTHUB_WORK_DIR = tmp;
+
+    const item = createWorkItem({
+      type: 'task',
+      title: 'Single pass',
+      description: 'Do not repeat the crew',
+      assignedAgentType: 'mock',
+      status: 'todo',
+      acceptanceCriteria: ['improvements.md created in work directory', 'At least 3 actionable recommendations'],
+    });
+    seedEvalWorkDir(resolveWorkItemOutputDir(item)!);
+    expect(item.maxLoopIterations).toBe(1);
+
+    const result = await runWorkItemPipeline(item.id, { autoLoop: true });
+    expect(result.iterations).toBe(1);
+    expect(getWorkItem(item.id)?.maxLoopIterations).toBe(1);
+
     delete process.env.AGENTHUB_WORK_DIR;
     fs.rmSync(tmp, { recursive: true, force: true });
   });

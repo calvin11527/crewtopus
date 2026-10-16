@@ -79,12 +79,14 @@ import {
   COLUMNS,
   CONSOLE_HEIGHT_KEY,
   DEFAULT_CONSOLE_HEIGHT,
+  DEFAULT_MAX_LOOP_ITERATIONS,
   DETAIL_EXPANDED_KEY,
   SPRINT_STATUSES,
   TYPES,
   LOOP_STATUS_LABEL,
   activityContent,
   activityWorkDir,
+  clampLoopPasses,
   emptyForm,
   emptySprintForm,
   readStoredBoolean,
@@ -101,6 +103,9 @@ import { filterWorkItems } from './board/board-filter';
 import BoardModals from './board/BoardModals';
 import WorkItemCard from './board/WorkItemCard';
 import WorkItemDetail, { type PipelineResultState } from './board/WorkItemDetail';
+
+/** Survives a dev remount so ?demo=1 starts the mock crew once per click. */
+const launchedDemoKeys = new Set<string>();
 
 export default function Board() {
   const qc = useQueryClient();
@@ -416,6 +421,7 @@ export default function Board() {
       agent: item.assignedAgentType || 'mock',
       description: item.description || '',
       workspaceId: item.workspaceId || '',
+      maxLoopIterations: clampLoopPasses(item.maxLoopIterations),
     });
   };
 
@@ -429,6 +435,7 @@ export default function Board() {
       workspaceId: form.workspaceId || undefined,
       sprintId: selectedSprint,
       status: 'backlog',
+      maxLoopIterations: clampLoopPasses(form.maxLoopIterations),
     });
     setCreateOpen(false);
     setForm(emptyForm());
@@ -443,6 +450,7 @@ export default function Board() {
       description: form.description.trim() || undefined,
       assignedAgentType: form.agent,
       workspaceId: form.workspaceId || undefined,
+      maxLoopIterations: clampLoopPasses(form.maxLoopIterations),
     });
     if (selected?.id === editItem.id) setSelected(updated);
     setEditItem(null);
@@ -622,12 +630,38 @@ export default function Board() {
     }
   };
 
+  const handleSetLoopPasses = async (item: WorkItem, passes: number) => {
+    const next = clampLoopPasses(passes);
+    try {
+      const updated = await updateItem.mutateAsync({ id: item.id, maxLoopIterations: next });
+      if (selected?.id === item.id) setSelected(updated);
+    } catch (err) {
+      setActionNotice(err instanceof Error ? err.message : 'Could not update automatic passes');
+    }
+  };
+
   const handleMultiAgentDemo = async () => {
     // Always mock pipeline so first-time users succeed without paid CLIs.
     const { item } = await createDemo.mutateAsync(selectedSprint);
     setActionNotice('Running multi-agent demo with mock adapters (no paid CLIs)…');
     await handleRunPipeline(item, true, true);
   };
+
+  useEffect(() => {
+    if (searchParams.get('demo') !== '1') return;
+    if (!sprints) return;
+    if (typeof sprintId === 'string' && !sprints.some((sprint) => sprint.id === sprintId)) return;
+    const key = searchParams.get('launch') ?? '1';
+    if (launchedDemoKeys.has(key)) return;
+    launchedDemoKeys.add(key);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('demo');
+      next.delete('launch');
+      return next;
+    }, { replace: true });
+    void handleMultiAgentDemo();
+  }, [searchParams, sprints, sprintId, setSearchParams, selectedSprint]);
 
   useEffect(() => {
     if (!sprintTeam) return;
@@ -698,7 +732,7 @@ export default function Board() {
             labels: result.bootstrapped ? ['sprint-bootstrap', 'lifecycle'] : [],
             acceptanceCriteria: [],
             loopIteration: 0,
-            maxLoopIterations: 3,
+            maxLoopIterations: DEFAULT_MAX_LOOP_ITERATIONS,
             loopStatus: result.step === 'pipeline' ? 'running' : 'idle',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -725,7 +759,7 @@ export default function Board() {
           labels: ['sprint-bootstrap'],
           acceptanceCriteria: [],
           loopIteration: 0,
-          maxLoopIterations: 3,
+          maxLoopIterations: DEFAULT_MAX_LOOP_ITERATIONS,
           loopStatus: 'running',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -1059,6 +1093,25 @@ export default function Board() {
             </option>
           ))}
         </select>
+      </label>
+      <label>
+        Automatic passes
+        <select
+          id={mode === 'create' ? 'create-loop-passes' : 'edit-loop-passes'}
+          className="input"
+          value={String(clampLoopPasses(form.maxLoopIterations))}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, maxLoopIterations: clampLoopPasses(Number(e.target.value)) }))
+          }
+        >
+          <option value="1">1 — one crew pass (default)</option>
+          <option value="2">2 — retry once if review asks for changes</option>
+          <option value="3">3 — maximum automatic retries</option>
+        </select>
+        <span className="text-muted form-hint">
+          Each pass is implement, test, then review. One pass keeps a task from sitting in the loop.
+          You can raise this up to 3 times.
+        </span>
       </label>
       <div className="modal-actions">
         <button
@@ -1624,6 +1677,7 @@ export default function Board() {
             onRetry={(next) =>
               next.type === 'story' ? void handleRunLifecycle(next) : void handleRunPipeline(next)
             }
+            onSetLoopPasses={(next, passes) => void handleSetLoopPasses(next, passes)}
           />
         )}
       </div>

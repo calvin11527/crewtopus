@@ -61,7 +61,7 @@ function grokCopilotWorkflowDefinition(): WorkflowDefinition {
       {
         id: 'grok-copilot',
         until: 'eval_pass',
-        maxIterations: 3,
+        maxIterations: 1,
         onExhausted: 'escalate',
         verdictParser: 'approved_changes_requested',
         evals: [

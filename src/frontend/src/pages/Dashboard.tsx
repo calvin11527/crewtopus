@@ -1,10 +1,11 @@
-import { Link } from 'react-router';
-import { Activity, Bot, GitBranch, Shield, Zap, DollarSign, Sparkles } from 'lucide-react';
+import { Link, useNavigate } from 'react-router';
+import { Activity, Bot, GitBranch, Play, Shield, Zap, DollarSign, Sparkles } from 'lucide-react';
 import { useHealth, useSystemStatus, useAuditStats, useSupervisorStatus, useAgents, useWorkflows } from '../api/hooks';
 import LiveFeed from '../components/LiveFeed';
 import CreditUsage from '../components/CreditUsage';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { data: health } = useHealth();
   const { data: status } = useSystemStatus();
   const { data: auditStats } = useAuditStats();
@@ -26,10 +27,21 @@ export default function Dashboard() {
       <div id="welcome-demo-callout" className="welcome-demo-callout" role="note">
         <Sparkles size={18} className="welcome-demo-callout__icon" aria-hidden />
         <div className="welcome-demo-callout__body">
-          <strong>New here?</strong> Open the{' '}
-          <Link to="/board">Scrum Board</Link> and click <strong>Multi-agent demo</strong> — mock
-          implement → test → review with no paid CLIs. Or from a terminal:{' '}
-          <code>cd src && npm run demo</code>
+          <strong>New here?</strong> Run the mock crew on the Scrum Board — implement, test, then
+          review, with no paid CLIs. Or from a terminal: <code>cd src && npm run demo</code>
+          <div className="welcome-demo-callout__actions">
+            <button
+              id="dashboard-run-mock-demo"
+              type="button"
+              className="btn btn--primary welcome-demo-callout__cta"
+              onClick={() => navigate(`/board?demo=1&launch=${Date.now()}`)}
+            >
+              <Play size={16} /> Run mock demo on board
+            </button>
+            <Link to="/board" className="btn btn--ghost">
+              Open Scrum Board
+            </Link>
+          </div>
         </div>
       </div>
 

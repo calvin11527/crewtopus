@@ -133,9 +133,38 @@ export function spawnCommandLineTooLong(command: string, args: string[]): boolea
   return estimateSpawnCommandLineLength(command, args) > SPAWN_CMDLINE_SOFT_MAX;
 }
 
+/**
+ * Prompt files stay in a private app directory (mode 0700 / 0600).
+ * The OS temp dir is shared, so writing there is an insecure temporary file (CWE-377).
+ */
+function promptTempDir(): string {
+  const dir = path.join(os.homedir(), '.crewtopus', 'prompt-tmp');
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    fs.chmodSync(dir, 0o700);
+  } catch {
+    /* Windows may not apply POSIX modes */
+  }
+  return dir;
+}
+
 export function writeTempPromptFile(prompt: string): string {
-  const filePath = path.join(os.tmpdir(), `crewtopus-prompt-${randomUUID()}.txt`);
-  fs.writeFileSync(filePath, prompt, 'utf8');
+  const filePath = path.join(promptTempDir(), `crewtopus-prompt-${randomUUID()}.txt`);
+  const fd = fs.openSync(
+    filePath,
+    fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+    0o600
+  );
+  try {
+    fs.writeFileSync(fd, prompt, 'utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+  try {
+    fs.chmodSync(filePath, 0o600);
+  } catch {
+    /* Windows may not apply POSIX modes */
+  }
   return filePath;
 }
 
@@ -171,6 +200,17 @@ export function resolvePromptSpawnArgs(
   return { args: [promptFileFlag, promptFile, ...restArgs], promptFile };
 }
 
+function formatSpawnError(command: string, err: unknown): Error {
+  const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : '';
+  if (code === 'ENOENT') {
+    return new Error(
+      `CLI "${command}" is not installed or not on PATH. Open Agents and switch this role to an installed adapter (Mock needs no paid CLI).`
+    );
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return new Error(`Failed to spawn "${command}": ${message}`);
+}
+
 function killProcessTree(proc: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
   if (!proc.pid) return;
   if (process.platform !== 'win32') {
@@ -201,8 +241,7 @@ export function spawnCli(
         env: { ...process.env, FORCE_COLOR: '0' },
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      reject(new Error(`Failed to spawn "${command}": ${message}`));
+      reject(formatSpawnError(command, err));
       return;
     }
 
@@ -280,7 +319,7 @@ export function spawnCli(
     });
 
     proc.on('error', (err) => {
-      finish(() => reject(new Error(`Failed to spawn "${command}": ${err.message}`)));
+      finish(() => reject(formatSpawnError(command, err)));
     });
 
     proc.on('close', (code) => {

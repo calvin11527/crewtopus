@@ -11,7 +11,9 @@ Living roadmap for adoption and product maturity. Order is intentional: **activa
 - [x] CONTRIBUTING + issue templates
 - [x] One-command Docker demo (`./demo.sh`) — UI + API + mock approved
 - [x] Mock demo ends cleanly as `loopStatus=approved` / `status=done`
-- [ ] Public case study: real repo + one finished story write-up
+- [x] Public case study: real repo + one finished story write-up ([one-pass crew](case-studies/one-pass-crew.md))
+- [x] One automatic crew pass per task; a person can raise it to 2 or 3
+- [x] CLI-missing errors tell you to switch adapter on the Agents page
 
 ## Next (trust on non-toy repos)
 

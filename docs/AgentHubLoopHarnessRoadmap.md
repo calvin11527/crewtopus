@@ -50,7 +50,7 @@ flowchart TB
 ### Deliverables
 
 1. **Iteration state on work items**
-   - Track `loopIteration`, `maxLoopIterations` (default 3), `loopStatus` (`idle` | `running` | `approved` | `escalated` | `failed`).
+   - Track `loopIteration`, `maxLoopIterations` (default 1, user-editable up to 3), `loopStatus` (`idle` | `running` | `approved` | `escalated` | `failed`).
    - Store in `work_item` table (new columns) or `work_item.metadata` JSON column.
 
 2. **Closed-loop runner in `work-item-pipeline.ts`**

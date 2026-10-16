@@ -205,7 +205,7 @@ async function runScrumMasterTick(sprintId: string, at: Date): Promise<void> {
   }
 
   const workflowId = ensureGrokCopilotWorkflow();
-  const job = enqueueWorkItemPipeline(next.id, workflowId, { maxIterations: 3, autoLoop: true });
+  const job = enqueueWorkItemPipeline(next.id, workflowId, { autoLoop: true });
 
   logWorkItemActivity({
     workItemId: next.id,

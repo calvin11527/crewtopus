@@ -12,6 +12,7 @@ import type {
   WorkflowLoopResult,
   ContextScope,
 } from '../types';
+import { explicitLoopIterations } from '../types';
 import { runAgentLoop } from './loop-engine';
 import { generateId, now, parseJson } from '../utils/helpers';
 import { broadcast } from '../websocket';
@@ -413,7 +414,7 @@ async function runWorkflowLoops(active: ActiveExecution): Promise<void> {
       workItemId: opts.workItemId,
       workDir: active.basePath,
       options: {
-        maxIterations: opts.maxLoopIterations ?? loop.maxIterations,
+        ...explicitLoopIterations(opts.maxLoopIterations),
         autoLoop: opts.autoLoop,
       },
       executionLabel: active.workflow.name,

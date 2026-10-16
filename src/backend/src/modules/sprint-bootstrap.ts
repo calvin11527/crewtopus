@@ -1,4 +1,5 @@
 import type { Sprint, WorkItem } from '../types';
+import { explicitLoopIterations } from '../types';
 import { createWorkItem, getSprint, listWorkItems, updateSprint, updateWorkItem } from './work-items';
 import { logWorkItemActivity } from './work-item-activity';
 import { resolveStoryQueueItems } from './story-queue';
@@ -214,7 +215,7 @@ export function startSprintQueue(
   if (ensured.bootstrapped && ensured.seedStory) {
     try {
       const lifecycle = startFullLifecycle(ensured.seedStory.id, {
-        maxIterations: options.maxIterations ?? 3,
+        ...explicitLoopIterations(options.maxIterations),
         autoLoop: options.autoLoop !== false,
         orchestrator: 'sprint_queue_bootstrap',
       });

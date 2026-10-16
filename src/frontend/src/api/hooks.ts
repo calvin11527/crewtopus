@@ -672,6 +672,7 @@ export function useUpdateWorkItem() {
       priority?: WorkItemPriority;
       assignedAgentType?: AgentType;
       workspaceId?: string;
+      maxLoopIterations?: number;
     }) => api.patch<WorkItem>(`/work-items/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['work-items'] });
@@ -956,7 +957,7 @@ export function useRunStoryQueue() {
     }) =>
       api.post<StoryQueueResult>(
         `/work-items/sprints/${sprintId}/run-queue`,
-        { demo, maxIterations: 2, autoLoop: true, async: runAsync ?? true }
+        { demo, autoLoop: true, async: runAsync ?? true }
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['work-items'] });

@@ -16,6 +16,11 @@ describe('board URL params', () => {
     expect(parseBoardSearchParams(new URLSearchParams('item=x')).sprintId).toBeUndefined();
   });
 
+  it('parses the mock-demo deep link', () => {
+    expect(parseBoardSearchParams(new URLSearchParams('demo=1')).demo).toBe(true);
+    expect(parseBoardSearchParams(new URLSearchParams('')).demo).toBe(false);
+  });
+
   it('writes sprint=all and clears item', () => {
     const next = buildBoardSearchParams(new URLSearchParams('sprint=abc&item=wi-1'), {
       sprint: null,

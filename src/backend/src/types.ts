@@ -371,7 +371,53 @@ export interface SprintTeamView {
   automation: SprintAutomation;
 }
 
-export const DEFAULT_MAX_LOOP_ITERATIONS = 3;
+/** One implement → test → review pass. Extra automatic retries are what made each task feel stuck. */
+export const DEFAULT_MAX_LOOP_ITERATIONS = 1;
+/** A person can raise the automatic pass count, but not past this cap. */
+export const MAX_USER_LOOP_ITERATIONS = 3;
+
+export function clampLoopIterations(value: unknown, fallback = DEFAULT_MAX_LOOP_ITERATIONS): number {
+  const numeric =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim() !== ''
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isFinite(numeric)) return fallback;
+  const rounded = Math.trunc(numeric);
+  if (rounded < 1) return 1;
+  if (rounded > MAX_USER_LOOP_ITERATIONS) return MAX_USER_LOOP_ITERATIONS;
+  return rounded;
+}
+
+/**
+ * Explicit request wins, then the work item setting the person edited, then the workflow template.
+ * Every path is clamped to 1–3.
+ */
+export function resolveLoopIterations(input: {
+  explicit?: number | null;
+  workItemMax?: number | null;
+  loopMax?: number | null;
+}): number {
+  if (input.explicit != null && Number.isFinite(Number(input.explicit))) {
+    return clampLoopIterations(input.explicit);
+  }
+  if (input.workItemMax != null && Number.isFinite(Number(input.workItemMax))) {
+    return clampLoopIterations(input.workItemMax);
+  }
+  if (input.loopMax != null && Number.isFinite(Number(input.loopMax))) {
+    return clampLoopIterations(input.loopMax);
+  }
+  return DEFAULT_MAX_LOOP_ITERATIONS;
+}
+
+/** Omit the field when unset so a caller does not override the work item's saved pass count. */
+export function explicitLoopIterations(
+  value: number | null | undefined
+): { maxIterations: number } | Record<string, never> {
+  if (value == null || !Number.isFinite(Number(value))) return {};
+  return { maxIterations: clampLoopIterations(value) };
+}
 export type SprintStatus = 'planning' | 'active' | 'completed';
 
 export interface Sprint {

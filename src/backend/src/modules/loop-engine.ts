@@ -6,7 +6,7 @@ import type {
   WorkItem,
   WorkItemStatus,
 } from '../types';
-import { DEFAULT_MAX_LOOP_ITERATIONS } from '../types';
+import { resolveLoopIterations } from '../types';
 import { broadcast } from '../websocket';
 import { now } from '../utils/helpers';
 import {
@@ -516,7 +516,6 @@ export async function runAgentLoop(input: {
   workflowExecutionId?: string;
 }): Promise<AgentLoopResult> {
   const { loop, workflowId, workItemId, options = {} } = input;
-  const maxIterations = options.maxIterations ?? loop.maxIterations ?? DEFAULT_MAX_LOOP_ITERATIONS;
   const autoLoop = options.autoLoop !== false;
   const executionLabel = input.executionLabel ?? loop.id;
 
@@ -531,6 +530,12 @@ export async function runAgentLoop(input: {
 
   const item = workItemId ? getWorkItem(workItemId) : null;
   if (workItemId && !item) throw new Error('Work item not found');
+
+  const maxIterations = resolveLoopIterations({
+    explicit: options.maxIterations,
+    workItemMax: item?.maxLoopIterations,
+    loopMax: loop.maxIterations,
+  });
 
   const workDir =
     input.workDir ??

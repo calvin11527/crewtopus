@@ -1,4 +1,5 @@
 import type { WorkItem, WorkItemStatus, WorkItemType } from '../types';
+import { explicitLoopIterations } from '../types';
 import { broadcast } from '../websocket';
 import { generateId, now } from '../utils/helpers';
 import { getWorkItem, listWorkItems, updateWorkItem } from './work-items';
@@ -222,7 +223,7 @@ export async function runStoryQueue(
 
     try {
       const pipeline = await runWorkItemPipeline(child.id, {
-        maxIterations: options.maxIterations ?? 2,
+        ...explicitLoopIterations(options.maxIterations),
         autoLoop: options.autoLoop !== false,
         workDir,
         demo: options.demo,

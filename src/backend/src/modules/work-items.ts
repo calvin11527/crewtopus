@@ -12,7 +12,7 @@ import type {
   AgentType,
   LoopStatus,
 } from '../types';
-import { DEFAULT_MAX_LOOP_ITERATIONS } from '../types';
+import { clampLoopIterations, DEFAULT_MAX_LOOP_ITERATIONS } from '../types';
 import { generateId, now, parseJson } from '../utils/helpers';
 import { broadcast } from '../websocket';
 import { logWorkItemActivity, listWorkItemActivity } from './work-item-activity';
@@ -357,6 +357,7 @@ export function createWorkItem(input: {
   labels?: string[];
   acceptanceCriteria?: string[];
   loopStatus?: LoopStatus;
+  maxLoopIterations?: number;
 }): WorkItem {
   const id = generateId();
   const key = nextWorkItemKey();
@@ -388,7 +389,7 @@ export function createWorkItem(input: {
       JSON.stringify(input.labels ?? []),
       JSON.stringify(input.acceptanceCriteria ?? []),
       0,
-      DEFAULT_MAX_LOOP_ITERATIONS,
+      clampLoopIterations(input.maxLoopIterations ?? DEFAULT_MAX_LOOP_ITERATIONS),
       input.loopStatus ?? 'idle',
       timestamp,
       timestamp
@@ -490,7 +491,10 @@ export function updateWorkItem(
   const labels = updates.labels ?? existing.labels;
   const acceptanceCriteria = updates.acceptanceCriteria ?? existing.acceptanceCriteria;
   const loopIteration = updates.loopIteration ?? existing.loopIteration;
-  const maxLoopIterations = updates.maxLoopIterations ?? existing.maxLoopIterations;
+  const maxLoopIterations =
+    updates.maxLoopIterations != null
+      ? clampLoopIterations(updates.maxLoopIterations)
+      : existing.maxLoopIterations;
   const loopStatus = updates.loopStatus ?? existing.loopStatus;
   const workspaceId = updates.workspaceId ?? existing.workspaceId;
   const timestamp = now();

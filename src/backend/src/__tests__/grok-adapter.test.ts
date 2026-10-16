@@ -15,6 +15,7 @@ import {
   SPAWN_CMDLINE_SOFT_MAX,
 } from '../adapters/base';
 import fs from 'fs';
+import path from 'path';
 
 describe('GrokAdapter', () => {
   const adapter = new GrokAdapter();
@@ -326,6 +327,8 @@ describe('resolvePromptSpawnArgs', () => {
     expect(resolved.args).not.toContain('-p');
     expect(fs.existsSync(resolved.promptFile!)).toBe(true);
     expect(fs.readFileSync(resolved.promptFile!, 'utf8')).toBe(huge);
+    expect(resolved.promptFile).toContain(`${path.sep}.crewtopus${path.sep}prompt-tmp${path.sep}`);
+    expect(fs.statSync(resolved.promptFile!).mode & 0o077).toBe(0);
     expect(estimateSpawnCommandLineLength('grok', resolved.args)).toBeLessThan(SPAWN_CMDLINE_SOFT_MAX);
     removeTempPromptFile(resolved.promptFile);
     expect(fs.existsSync(resolved.promptFile!)).toBe(false);

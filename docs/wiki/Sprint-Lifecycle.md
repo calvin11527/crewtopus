@@ -7,9 +7,11 @@ When you run **Full lifecycle** on a **story**:
 1. **BA (analysis)** — produces requirements / plan artifacts under the work item directory  
 2. **PM (planning)** — reads BA output and emits a JSON decomposition  
 3. **Child tasks** — PM tasks become board **tasks** automatically (or the story is marked atomic)  
-4. **Developer pipeline** — implement → test → review loop on open tasks / the story  
+4. **Developer pipeline** — one implement → test → review pass on open tasks / the story
 
 Tasks skip BA/PM and go straight to the developer pipeline.
+
+Each card runs that crew pass **once**. On the work item (or when you edit it) set **Automatic passes** to 2 or 3 if you want the harness to retry after review asks for changes. Three is the maximum, so a task cannot sit in an open-ended loop.
 
 ## Staffing requirements
 

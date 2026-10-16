@@ -430,7 +430,7 @@ body {
   color: var(--text-primary);
 }
 
-.welcome-demo-callout a {
+.welcome-demo-callout a:not(.btn) {
   color: var(--accent-blue);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -443,6 +443,20 @@ body {
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.35);
   color: var(--jp-text-warm);
+}
+
+.welcome-demo-callout__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.welcome-demo-callout__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
 }
 
 .page-header--row {
@@ -3432,6 +3446,28 @@ body {
   margin-top: 6px;
   font-size: 0.72rem;
   text-transform: none;
+}
+
+.loop-pass-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.loop-pass-control select {
+  width: auto;
+  min-width: 6.5rem;
+  padding: 2px 6px;
+  font-size: 0.72rem;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.78rem;
 }
 
 @keyframes loop-pulse {

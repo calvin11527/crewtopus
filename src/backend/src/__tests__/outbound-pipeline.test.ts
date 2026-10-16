@@ -3,7 +3,6 @@ import { getAdapter } from '../adapters';
 import {
   executeOutboundPipeline,
   PrivacyBlockedError,
-  AgentUnavailableError,
 } from '../modules/outbound-pipeline';
 import { listAuditEntries } from '../modules/audit-logger';
 import { ApprovalRequiredError, approveRequest } from '../modules/approval-gate';
@@ -92,7 +91,7 @@ describe('Outbound Pipeline Integration', () => {
         contextScope: scope,
         capability: 'analysis',
       })
-    ).rejects.toBeInstanceOf(AgentUnavailableError);
+    ).rejects.toThrow(/switch this role to an installed adapter/i);
   });
 
   it('falls back to mock only when demo flag is set', async () => {

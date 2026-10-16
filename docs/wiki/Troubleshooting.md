@@ -28,7 +28,7 @@ Full lifecycle is **BA → PM → create tasks**. If BA fails, PM never runs and
 
 ## CLI not found
 
-Install and authenticate the agent CLI on your PATH (`grok`, `copilot`, `claude`, `ollama`, …). Use **Mock** for UI-only demos.
+A failed run says which adapter is missing and tells you to open **Agents** and switch that role. Install and authenticate the CLI on your PATH (`grok`, `copilot`, `claude`, `ollama`, …), or switch the role to **Mock**. Mock needs no paid CLI and is what **Run mock demo on board** uses.
 
 ## Still stuck?
 

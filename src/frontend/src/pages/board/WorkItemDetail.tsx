@@ -36,10 +36,12 @@ import {
   COLUMN_LABEL,
   COLUMNS,
   LOOP_STATUS_LABEL,
+  MAX_USER_LOOP_ITERATIONS,
   activityContent,
   activityEvalResults,
   activityLoopIteration,
   activityWorkDir,
+  clampLoopPasses,
 } from './constants';
 
 type AgentConsoleModel = ReturnType<typeof useWorkItemAgentConsole>;
@@ -94,6 +96,7 @@ interface WorkItemDetailProps {
   latestCompleted?: WorkItemActivity;
   now: WorkItemNow;
   onRetry?: (item: WorkItem) => void;
+  onSetLoopPasses?: (item: WorkItem, passes: number) => void;
 }
 
 function OverviewSection({
@@ -366,6 +369,7 @@ export default function WorkItemDetail({
   latestCompleted,
   now,
   onRetry,
+  onSetLoopPasses,
 }: WorkItemDetailProps) {
   const chip = workItemLifecycleChip(boardItem);
   const [tab, setTab] = useState<DetailTab>('overview');
@@ -474,6 +478,25 @@ export default function WorkItemDetail({
                       : ''}
                   </span>
                 ) : null}
+                <label className="loop-pass-control" htmlFor={`loop-passes-${boardItem.id}`}>
+                  <span>Passes</span>
+                  <select
+                    id={`loop-passes-${boardItem.id}`}
+                    className="input"
+                    value={String(clampLoopPasses(boardItem.maxLoopIterations))}
+                    disabled={detailBusy.busy || boardItem.loopStatus === 'running' || !onSetLoopPasses}
+                    title="Automatic implement → test → review passes. Default is 1. You can raise this up to 3."
+                    onChange={(event) =>
+                      onSetLoopPasses?.(boardItem, clampLoopPasses(Number(event.target.value)))
+                    }
+                  >
+                    {Array.from({ length: MAX_USER_LOOP_ITERATIONS }, (_, index) => index + 1).map((passes) => (
+                      <option key={passes} value={passes}>
+                        {passes === 1 ? '1 (default)' : String(passes)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
             </div>
 

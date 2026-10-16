@@ -200,7 +200,7 @@ const MIGRATIONS: string[] = [
     labels TEXT NOT NULL DEFAULT '[]',
     acceptance_criteria TEXT NOT NULL DEFAULT '[]',
     loop_iteration INTEGER NOT NULL DEFAULT 0,
-    max_loop_iterations INTEGER NOT NULL DEFAULT 3,
+    max_loop_iterations INTEGER NOT NULL DEFAULT 1,
     loop_status TEXT NOT NULL DEFAULT 'idle',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -253,7 +253,7 @@ const MIGRATIONS: string[] = [
     workflow_execution_id TEXT,
     loop_id TEXT NOT NULL,
     iteration INTEGER NOT NULL DEFAULT 0,
-    max_iterations INTEGER NOT NULL DEFAULT 3,
+    max_iterations INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'running',
     verdict TEXT,
     loop_status TEXT,
@@ -318,7 +318,7 @@ export function initDatabase(): Database.Database {
         db!.exec('ALTER TABLE work_item ADD COLUMN loop_iteration INTEGER NOT NULL DEFAULT 0');
       }
       if (!names.has('max_loop_iterations')) {
-        db!.exec('ALTER TABLE work_item ADD COLUMN max_loop_iterations INTEGER NOT NULL DEFAULT 3');
+        db!.exec('ALTER TABLE work_item ADD COLUMN max_loop_iterations INTEGER NOT NULL DEFAULT 1');
       }
       if (!names.has('loop_status')) {
         db!.exec("ALTER TABLE work_item ADD COLUMN loop_status TEXT NOT NULL DEFAULT 'idle'");
@@ -356,7 +356,7 @@ export function initDatabase(): Database.Database {
         workflow_execution_id TEXT,
         loop_id TEXT NOT NULL,
         iteration INTEGER NOT NULL DEFAULT 0,
-        max_iterations INTEGER NOT NULL DEFAULT 3,
+        max_iterations INTEGER NOT NULL DEFAULT 1,
         status TEXT NOT NULL DEFAULT 'running',
         verdict TEXT,
         loop_status TEXT,
@@ -558,6 +558,70 @@ export function initDatabase(): Database.Database {
         'CREATE INDEX IF NOT EXISTS idx_approval_consumed ON approval_request(status, consumed_at)'
       );
       db!.prepare('UPDATE schema_version SET version = ?').run(11);
+      version = 11;
+    }
+
+    if (version < 12) {
+      // The old default of 3 automatic passes is what kept each task in the crew loop.
+      // Reset that default once. A later edit to 2 or 3 is stored as-is and is not touched again.
+      db!.exec('UPDATE work_item SET max_loop_iterations = 1 WHERE max_loop_iterations = 3');
+      db!.exec('UPDATE work_item SET max_loop_iterations = 3 WHERE max_loop_iterations > 3');
+      db!.exec('UPDATE work_item SET max_loop_iterations = 1 WHERE max_loop_iterations < 1');
+
+      const pendingJobs = db!.prepare(
+        `SELECT id, payload FROM loop_job WHERE status IN ('pending', 'awaiting_approval')`
+      ).all() as { id: string; payload: string }[];
+      const updateJob = db!.prepare('UPDATE loop_job SET payload = ? WHERE id = ?');
+      for (const job of pendingJobs) {
+        let payload: Record<string, unknown>;
+        try {
+          payload = JSON.parse(job.payload || '{}') as Record<string, unknown>;
+        } catch {
+          continue;
+        }
+        let changed = false;
+        for (const key of ['maxIterations', 'maxLoopIterations'] as const) {
+          const raw = payload[key];
+          if (raw === 2 || raw === 3) {
+            delete payload[key];
+            changed = true;
+          } else if (typeof raw === 'number' && raw > 3) {
+            payload[key] = 3;
+            changed = true;
+          } else if (typeof raw === 'number' && raw < 1) {
+            payload[key] = 1;
+            changed = true;
+          }
+        }
+        if (changed) updateJob.run(JSON.stringify(payload), job.id);
+      }
+
+      const workflows = db!.prepare('SELECT id, definition FROM workflow').all() as {
+        id: string;
+        definition: string;
+      }[];
+      const updateWorkflowRow = db!.prepare('UPDATE workflow SET definition = ? WHERE id = ?');
+      for (const workflow of workflows) {
+        let definition: { loops?: Array<{ maxIterations?: number }> };
+        try {
+          definition = JSON.parse(workflow.definition) as { loops?: Array<{ maxIterations?: number }> };
+        } catch {
+          continue;
+        }
+        let changed = false;
+        for (const loop of definition.loops ?? []) {
+          if (loop.maxIterations === 3) {
+            loop.maxIterations = 1;
+            changed = true;
+          } else if (typeof loop.maxIterations === 'number' && loop.maxIterations > 3) {
+            loop.maxIterations = 3;
+            changed = true;
+          }
+        }
+        if (changed) updateWorkflowRow.run(JSON.stringify(definition), workflow.id);
+      }
+
+      db!.prepare('UPDATE schema_version SET version = ?').run(12);
     }
   });
 

@@ -1,4 +1,5 @@
 import type { WorkItem } from '../types';
+import { explicitLoopIterations } from '../types';
 import {
   enqueueStoryLifecycleJob,
   enqueueWorkItemPipeline,
@@ -149,7 +150,7 @@ function enqueuePipelineForTarget(
 
   const workflowId = ensureGrokCopilotWorkflow();
   const job = enqueueWorkItemPipeline(target.id, workflowId, {
-    maxIterations: options.maxIterations ?? 3,
+    ...explicitLoopIterations(options.maxIterations),
     autoLoop: options.autoLoop !== false,
   });
   prepareWorkItemAgentRun(target.id, job.id);
@@ -367,7 +368,7 @@ export async function runFullLifecycleSync(
 
   if (item.type === 'task' || item.type === 'bug') {
     const pipeline = await runWorkItemPipeline(item.id, {
-      maxIterations: options.maxIterations ?? 3,
+      ...explicitLoopIterations(options.maxIterations),
       autoLoop: options.autoLoop !== false,
     });
     return {
@@ -422,7 +423,7 @@ export async function runFullLifecycleSync(
   }
 
   const pipeline = await runWorkItemPipeline(target.id, {
-    maxIterations: options.maxIterations ?? 3,
+    ...explicitLoopIterations(options.maxIterations),
     autoLoop: options.autoLoop !== false,
   });
 
