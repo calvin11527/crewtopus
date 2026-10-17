@@ -4,6 +4,7 @@ import { generateId, now, parseJson } from '../utils/helpers';
 import { mergeSafeConfig } from '../utils/safe-path';
 import { broadcast } from '../websocket';
 import { hasAdapter, listAdapterTypes } from '../adapters';
+import { applyGrokRunDefaults } from './grok-defaults';
 
 interface AgentRow {
   id: string;
@@ -67,13 +68,14 @@ export function registerAgent(
 
   const id = generateId();
   const timestamp = now();
+  const stored = applyGrokRunDefaults(type, config);
 
   db.prepare(
     `INSERT INTO agent (id, name, type, enabled, status, config, created_at)
      VALUES (?, ?, ?, 1, 'idle', ?, ?)`
-  ).run(id, name, type, JSON.stringify(config), timestamp);
+  ).run(id, name, type, JSON.stringify(stored), timestamp);
 
-  const agent: Agent = { id, name, type, enabled: true, status: 'idle', config, createdAt: timestamp };
+  const agent: Agent = { id, name, type, enabled: true, status: 'idle', config: stored, createdAt: timestamp };
   notifyStatusChange(agent);
   return agent;
 }

@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { upgradeStoredGrokConfig } from './modules/grok-defaults';
 import { envString } from './utils/env';
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
@@ -622,6 +623,30 @@ export function initDatabase(): Database.Database {
       }
 
       db!.prepare('UPDATE schema_version SET version = ?').run(12);
+      version = 12;
+    }
+
+    if (version < 13) {
+      // Stored Grok agents still point at grok-4.5 / grok-4.6 or have no effort.
+      // Move those defaults forward once. A chosen fast or custom model, and any
+      // explicit effort, stay as the person set them.
+      const grokAgents = db!.prepare(
+        `SELECT id, config FROM agent WHERE type = 'grok'`
+      ).all() as { id: string; config: string }[];
+      const updateAgent = db!.prepare('UPDATE agent SET config = ? WHERE id = ?');
+      for (const agent of grokAgents) {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(agent.config || '{}');
+        } catch {
+          continue;
+        }
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+        const upgraded = upgradeStoredGrokConfig(parsed as Record<string, unknown>);
+        if (upgraded.changed) updateAgent.run(JSON.stringify(upgraded.config), agent.id);
+      }
+      db!.prepare('UPDATE schema_version SET version = ?').run(13);
+      version = 13;
     }
   });
 

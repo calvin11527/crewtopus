@@ -12,7 +12,7 @@ describe('capability-learning', () => {
   it('parses flags and models from help text', () => {
     const parsed = parseHelpText(`
       Usage: grok [options]
-      --model <name>   Select model (grok-4.5, grok-3)
+      --model <name>   Select model (grok-4.7, grok-4.5)
       --permission plan|yolo
       --workspace path
     `);

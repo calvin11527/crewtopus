@@ -1,5 +1,6 @@
 import { listAgents, updateAgentConfig } from '../modules/agent-registry';
 import {
+  DEFAULT_GROK_EFFORT,
   parseEffortLevel,
   resolveAgentEffort,
   resolveAlwaysApprove,
@@ -25,6 +26,17 @@ describe('agent-run-options', () => {
     const copilot = listAgents().find((a) => a.type === 'copilot')!;
     expect(resolveAgentEffort(undefined, 'grok')).toBe('medium');
     expect(resolveAgentEffort(copilot.id, 'copilot')).toBeUndefined();
+    if (previous === undefined) delete process.env.GROK_EFFORT;
+    else process.env.GROK_EFFORT = previous;
+  });
+
+  it('defaults unset grok effort to medium', () => {
+    const previous = process.env.GROK_EFFORT;
+    delete process.env.GROK_EFFORT;
+    expect(resolveAgentEffort(undefined, 'grok')).toBe(DEFAULT_GROK_EFFORT);
+    expect(resolveAgentEffort(undefined, 'grok')).toBe('medium');
+    expect(resolveAgentEffort(undefined, 'copilot')).toBeUndefined();
+    expect(resolveAgentEffort(undefined, 'claude')).toBeUndefined();
     if (previous === undefined) delete process.env.GROK_EFFORT;
     else process.env.GROK_EFFORT = previous;
   });

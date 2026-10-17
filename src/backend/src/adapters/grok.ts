@@ -11,6 +11,11 @@ import {
   type SpawnCliOptions,
 } from './base';
 import { endCliStream, type CliStreamContext } from '../modules/cli-stream';
+import {
+  DEFAULT_GROK_EFFORT,
+  DEFAULT_GROK_MAX_TURNS,
+  DEFAULT_GROK_MODEL,
+} from '../modules/grok-defaults';
 import { envFlag, envWorkDir } from '../utils/env';
 
 function grokCommand(): string {
@@ -43,6 +48,31 @@ export function normalizeGrokPermissionMode(mode: string): GrokPermissionMode {
   }
   if (mode === 'readOnly') return 'plan';
   return 'acceptEdits';
+}
+
+/**
+ * Tool-turn cap passed as `--max-turns`.
+ * Default 30 so one crew pass cannot spin. `GROK_MAX_TURNS=0` omits the flag.
+ */
+export function resolveGrokMaxTurns(): number | undefined {
+  const raw = process.env.GROK_MAX_TURNS;
+  if (raw == null || raw.trim() === '') return DEFAULT_GROK_MAX_TURNS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_GROK_MAX_TURNS;
+  const turns = Math.floor(parsed);
+  return turns === 0 ? undefined : turns;
+}
+
+/**
+ * Pass `--no-plan` so Grok does not open an inner plan before the crew phase.
+ * Review steps that already selected permission mode `plan` keep that mode.
+ * `GROK_NO_PLAN=false` (or `0`) turns the flag off.
+ */
+export function resolveGrokNoPlan(permissionMode: GrokPermissionMode): boolean {
+  if (permissionMode === 'plan') return false;
+  const raw = process.env.GROK_NO_PLAN;
+  if (raw === 'false' || raw === '0') return false;
+  return true;
 }
 
 /** Resolve Grok permission mode from harness profile, capability, or env. */
@@ -170,7 +200,12 @@ export class GrokAdapter implements AgentAdapter {
       typeof input.config?.alwaysApprove === 'boolean'
         ? input.config.alwaysApprove
         : process.env.GROK_ALWAYS_APPROVE !== 'false';
-    const effort = typeof input.config?.effort === 'string' ? input.config.effort.trim() : '';
+    const configuredEffort =
+      typeof input.config?.effort === 'string' ? input.config.effort.trim() : '';
+    const effort = configuredEffort || DEFAULT_GROK_EFFORT;
+    const configuredModel =
+      typeof input.config?.model === 'string' ? input.config.model.trim() : '';
+    const model = configuredModel || DEFAULT_GROK_MODEL;
     const timeoutMs = Number(process.env.GROK_TIMEOUT_MS) || 180_000;
 
     const streamCtx = input.config?.cliStream as CliStreamContext | undefined;
@@ -190,9 +225,11 @@ export class GrokAdapter implements AgentAdapter {
     ];
 
     if (alwaysApprove) restArgs.push('--always-approve');
-    if (effort) restArgs.push('--effort', effort);
-    const model = input.config?.model as string | undefined;
-    if (model) restArgs.push('--model', model);
+    restArgs.push('--effort', effort);
+    restArgs.push('--model', model);
+    const maxTurns = resolveGrokMaxTurns();
+    if (maxTurns !== undefined) restArgs.push('--max-turns', String(maxTurns));
+    if (resolveGrokNoPlan(permissionMode)) restArgs.push('--no-plan');
     if (cwd) {
       fs.mkdirSync(cwd, { recursive: true });
       restArgs.push('--cwd', cwd);

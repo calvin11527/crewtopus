@@ -272,6 +272,78 @@ describe('GrokAdapter', () => {
       180_000,
       undefined
     );
+    const args = (base.spawnCli as jest.Mock).mock.calls[0][1] as string[];
+    expect(args).not.toContain('--no-plan');
+  });
+
+  it('defaults to grok-4.7, medium effort, a turn cap, and no inner plan', async () => {
+    const keys = ['GROK_MAX_TURNS', 'GROK_NO_PLAN', 'GROK_CWD', 'GROK_PERMISSION_MODE'] as const;
+    const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    for (const key of keys) delete process.env[key];
+
+    jest.spyOn(base, 'spawnCli').mockResolvedValue({
+      stdout: '{"text":"Done","stopReason":"EndTurn"}',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    try {
+      const output = await adapter.execute({
+        prompt: 'Hello',
+        contextScope: { files: [], diffs: [], symbols: [], maxTokens: 8000, sensitivityLevel: 0 },
+      });
+
+      expect(output.metadata.model).toBe('grok-4.7');
+      expect(base.spawnCli).toHaveBeenCalledWith(
+        'grok',
+        expect.arrayContaining([
+          '--model',
+          'grok-4.7',
+          '--effort',
+          'medium',
+          '--max-turns',
+          '30',
+          '--no-plan',
+        ]),
+        undefined,
+        180_000,
+        undefined
+      );
+    } finally {
+      for (const key of keys) {
+        if (saved[key] === undefined) delete process.env[key];
+        else process.env[key] = saved[key];
+      }
+    }
+  });
+
+  it('omits the turn cap and plan flag when the environment turns them off', async () => {
+    const previousTurns = process.env.GROK_MAX_TURNS;
+    const previousPlan = process.env.GROK_NO_PLAN;
+    process.env.GROK_MAX_TURNS = '0';
+    process.env.GROK_NO_PLAN = 'false';
+
+    jest.spyOn(base, 'spawnCli').mockResolvedValue({
+      stdout: '{"text":"Done","stopReason":"EndTurn"}',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    try {
+      await adapter.execute({
+        prompt: 'Hello',
+        contextScope: { files: [], diffs: [], symbols: [], maxTokens: 8000, sensitivityLevel: 0 },
+      });
+      const args = (base.spawnCli as jest.Mock).mock.calls[0][1] as string[];
+      expect(args).not.toContain('--max-turns');
+      expect(args).not.toContain('--no-plan');
+      expect(args).toEqual(expect.arrayContaining(['--model', 'grok-4.7', '--effort', 'medium']));
+    } finally {
+      if (previousTurns === undefined) delete process.env.GROK_MAX_TURNS;
+      else process.env.GROK_MAX_TURNS = previousTurns;
+      if (previousPlan === undefined) delete process.env.GROK_NO_PLAN;
+      else process.env.GROK_NO_PLAN = previousPlan;
+    }
   });
 
   it('writes long prompts to --prompt-file instead of -p', async () => {

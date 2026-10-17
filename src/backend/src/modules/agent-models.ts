@@ -12,6 +12,9 @@ import {
   type RecommendedLocalModel,
 } from './local-llm-catalog';
 import type { AgentType } from '../types';
+import { DEFAULT_GROK_MODEL } from './grok-defaults';
+
+export { DEFAULT_GROK_MODEL } from './grok-defaults';
 
 export interface AgentModelOption {
   id: string;
@@ -25,9 +28,6 @@ export interface AgentModelOption {
 }
 
 export type AgentModelCatalog = Partial<Record<AgentType, AgentModelOption[]>>;
-
-/** Current Grok CLI default (see `grok models`). Override with GROK_DEFAULT_MODEL. */
-export const DEFAULT_GROK_MODEL = 'grok-4.5';
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 
@@ -142,10 +142,17 @@ async function listGrokModels(): Promise<AgentModelOption[]> {
   return [
     {
       id: DEFAULT_GROK_MODEL,
-      label: 'Grok 4.5',
-      description: 'Grok CLI default coding model',
+      label: 'Grok 4.7',
+      description: "SpaceXAI's latest frontier model",
       isDefault: true,
     },
+    {
+      id: 'grok-4.7-build-fast',
+      label: 'Grok 4.7 Fast',
+      description: 'Fast variant. 2x the price.',
+    },
+    { id: 'grok-4.6', label: 'Grok 4.6', description: 'Previous Grok model' },
+    { id: 'grok-4.5', label: 'Grok 4.5', description: 'Previous Grok model' },
   ];
 }
 

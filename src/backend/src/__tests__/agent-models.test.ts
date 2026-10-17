@@ -33,14 +33,17 @@ describe('agent-models', () => {
       path.join(grokHome, 'models_cache.json'),
       JSON.stringify({
         models: {
-          'grok-4.5': { info: { id: 'grok-4.5', name: 'Grok 4.5', description: 'Frontier model' } },
+          'grok-4.7': { info: { id: 'grok-4.7', name: 'Grok 4.7', description: 'Frontier model' } },
+          'grok-4.5': { info: { id: 'grok-4.5', name: 'Grok 4.5', description: 'Previous model' } },
           'grok-build': { info: { id: 'grok-build', name: 'Grok Build', description: 'Build model' } },
         },
       })
     );
 
     const models = await listModelsForAgentType('grok');
-    expect(models.map((m) => m.id)).toEqual(expect.arrayContaining(['grok-4.5', 'grok-build']));
+    expect(models.map((m) => m.id)).toEqual(
+      expect.arrayContaining(['grok-4.7', 'grok-4.5', 'grok-build'])
+    );
     expect(models.find((m) => m.id === DEFAULT_GROK_MODEL)?.isDefault).toBe(true);
   });
 

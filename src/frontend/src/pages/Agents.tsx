@@ -35,13 +35,18 @@ const HIRE_ROLES: AgentRole[] = [
 
 const DEFAULT_HOURS: WorkingHoursBlock = { dow: [1, 2, 3, 4, 5], start: '09:00', end: '17:00' };
 
-const EFFORT_OPTIONS: { id: string; label: string }[] = [
-  { id: '', label: 'Provider default' },
-  { id: 'low', label: 'Low — faster, lighter reasoning' },
-  { id: 'medium', label: 'Medium — balanced' },
-  { id: 'high', label: 'High — deeper reasoning' },
-  { id: 'xhigh', label: 'Extra high — maximum reasoning' },
-];
+function effortOptions(type: AgentType): { id: string; label: string }[] {
+  return [
+    {
+      id: '',
+      label: type === 'grok' ? 'Default — medium' : 'Provider default',
+    },
+    { id: 'low', label: 'Low — faster, lighter reasoning' },
+    { id: 'medium', label: 'Medium — balanced' },
+    { id: 'high', label: 'High — deeper reasoning' },
+    { id: 'xhigh', label: 'Extra high — maximum reasoning' },
+  ];
+}
 
 function defaultAlwaysApprove(type: AgentType, config?: Record<string, unknown>): boolean {
   if (typeof config?.alwaysApprove === 'boolean') return config.alwaysApprove;
@@ -854,7 +859,7 @@ export default function Agents() {
                   value={effortDraft}
                   onChange={(e) => setEffortDraft(e.target.value)}
                 >
-                  {EFFORT_OPTIONS.map((option) => (
+                  {effortOptions(typeDraft).map((option) => (
                     <option key={option.id || 'default'} value={option.id}>
                       {option.label}
                     </option>
@@ -862,8 +867,10 @@ export default function Agents() {
                 </select>
               </label>
               <p className="text-muted agent-configure-help">
-                Passed to Grok as <code>--effort</code>, and to Copilot/Claude when they accept the
-                same flag. Extra high is ignored by models that do not support it.
+                Passed to Grok as <code>--effort</code>. Grok defaults to medium on{' '}
+                <code>grok-4.7</code>. Copilot and Claude receive the flag when that CLI accepts it.
+                Each Grok pass also sends <code>--max-turns</code> and <code>--no-plan</code> unless
+                the environment overrides them.
               </p>
               <label className="checkbox-row">
                 <input

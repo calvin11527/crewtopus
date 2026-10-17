@@ -21,7 +21,7 @@ cp .env.example src/.env   # or export vars in your shell
 
 | Variable | Purpose |
 |----------|---------|
-| `GROK_CLI_PATH`, `GROK_TIMEOUT_MS`, `GROK_DEFAULT_MODEL` | Grok CLI |
+| `GROK_CLI_PATH`, `GROK_TIMEOUT_MS`, `GROK_DEFAULT_MODEL`, `GROK_EFFORT`, `GROK_MAX_TURNS`, `GROK_NO_PLAN` | Grok CLI model, effort, turn cap, and plan mode |
 | `COPILOT_TIMEOUT_MS`, `COPILOT_*` | Copilot CLI |
 | `OLLAMA_HOST`, `OLLAMA_MODEL` | Local Ollama |
 | `AGENTHUB_*_MONTHLY_TOKEN_QUOTA` | Soft/hard budget signals |

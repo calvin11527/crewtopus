@@ -1,5 +1,8 @@
 import type { AgentType } from '../types';
 import { getAgent } from './agent-registry';
+import { DEFAULT_GROK_EFFORT } from './grok-defaults';
+
+export { DEFAULT_GROK_EFFORT } from './grok-defaults';
 
 export const AGENT_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh'] as const;
 export type AgentEffortLevel = (typeof AGENT_EFFORT_LEVELS)[number];
@@ -34,7 +37,7 @@ function envFlag(name: string | undefined): boolean | undefined {
   return undefined;
 }
 
-/** Reasoning effort for this outbound run (agent config → env → unset). */
+/** Reasoning effort for this outbound run (agent config → env → Grok medium). */
 export function resolveAgentEffort(
   agentId: string | undefined,
   agentType: AgentType,
@@ -48,7 +51,11 @@ export function resolveAgentEffort(
     if (fromAgent) return fromAgent;
   }
 
-  return parseEffortLevel(process.env[EFFORT_ENV[agentType] ?? '']);
+  const fromEnv = parseEffortLevel(process.env[EFFORT_ENV[agentType] ?? '']);
+  if (fromEnv) return fromEnv;
+
+  if (agentType === 'grok') return DEFAULT_GROK_EFFORT;
+  return undefined;
 }
 
 /**
