@@ -29,7 +29,9 @@ import {
   allEvalsPassed,
   defaultWorkItemLoopEvals,
   parseReviewVerdict,
+  parseTestingVerdict,
   type ReviewVerdict,
+  type TestingVerdict,
   type EvalResult,
   type LoopEval,
 } from './eval-harness';
@@ -41,10 +43,11 @@ import {
   cancelLoopRun,
 } from './loop-run';
 import { incrementCounter } from '../metrics';
-import { publishLoopOutput } from './loop-output';
+import { publishLoopOutput, writeLoopStepArtifact, writeLoopEvalArtifact } from './loop-output';
 import { isLoopCancelled as isLoopCancelRequested, clearLoopCancel } from './loop-cancel';
 import { updateAgentStatus } from './agent-registry';
 import { ApprovalRequiredError } from './approval-gate';
+import { assertLoopContract } from './loop-contract';
 
 export type { ReviewVerdict };
 
@@ -523,6 +526,8 @@ export async function runAgentLoop(input: {
     throw new Error('Agent loop requires at least one step');
   }
 
+  assertLoopContract(loop);
+
   const reviewStepIndex = loop.steps.findIndex(
     (s, i) => resolveStepPhase(s, i, loop.steps.length) === 'review'
   );
@@ -663,6 +668,9 @@ export async function runAgentLoop(input: {
       let iterationReviewOutput = '';
       let iterationReviewAuditId: string | undefined;
       let iterationImplementAuditId: string | undefined;
+      let iterationTestingOutput = '';
+      let iterationTestingVerdict: TestingVerdict = 'unknown';
+      const iterationStepOutputs = new Map<string, string>();
 
       for (let stepIdx = 0; stepIdx < loop.steps.length; stepIdx++) {
         if (workItemId && checkLoopCancelled(workItemId)) {
@@ -822,14 +830,20 @@ export async function runAgentLoop(input: {
           reviewVerdict = parseReviewVerdict(stepResult.content, {
             parser: loop.verdictParser,
             onUnknownVerdict: loop.onUnknownVerdict,
+            customRegex: loop.verdictRegex,
           });
           lastReviewFeedback = stepResult.content;
+        } else if (phase === 'testing') {
+          iterationTestingOutput = stepResult.content;
+          iterationTestingVerdict = parseTestingVerdict(stepResult.content);
         } else if (isPrimaryImplement) {
           iterationImplementOutput = stepResult.content;
           lastImplementOutput = stepResult.content;
           iterationImplementFiles = stepFiles;
           iterationImplementAuditId = stepResult.auditId;
         }
+
+        iterationStepOutputs.set(step.name, stepResult.content);
 
         allSteps.push({
           phase,
@@ -840,11 +854,35 @@ export async function runAgentLoop(input: {
           filesCreated: stepFiles,
           loopIteration: iteration,
         });
+
+        if (currentItem && workDir) {
+          try {
+            writeLoopStepArtifact({
+              item: currentItem,
+              workDir,
+              iteration,
+              phase,
+              stepName: step.name,
+              content: stepResult.content,
+              auditId: stepResult.auditId,
+            });
+          } catch {
+            /* artifact write is best-effort */
+          }
+        }
       }
 
       if (!hasReviewStep && loop.until === 'verdict_approved') {
         reviewVerdict = 'unknown';
       }
+
+      const hasTestingStep = loop.steps.some(
+        (s, i) => resolveStepPhase(s, i, loop.steps.length) === 'testing'
+      );
+      const testingBlocked =
+        hasTestingStep &&
+        !options.reviewOnly &&
+        iterationTestingVerdict === 'fail';
 
       const evals: LoopEval[] =
         loop.evals ??
@@ -852,15 +890,47 @@ export async function runAgentLoop(input: {
           ? defaultWorkItemLoopEvals(currentItem, { demo: options.demo })
           : []);
 
+      const matchStepName =
+        loop.untilMatchStep ??
+        (loop.until === 'step_output_match' ? loop.steps[loop.steps.length - 1]?.name : undefined);
+      const matchContent = matchStepName ? iterationStepOutputs.get(matchStepName) ?? '' : '';
+
       lastEvalResults =
         evals.length > 0
-          ? runLoopEvals(evals, {
-              workItem: currentItem,
-              workDir,
-              reviewContent: iterationReviewOutput,
-              reviewVerdict,
-            })
+          ? runLoopEvals(
+              evals.map((e) =>
+                e.type === 'step_output_match'
+                  ? {
+                      ...e,
+                      config: {
+                        ...e.config,
+                        content:
+                          (typeof e.config?.step === 'string'
+                            ? iterationStepOutputs.get(e.config.step)
+                            : undefined) ??
+                          matchContent ??
+                          iterationReviewOutput,
+                      },
+                    }
+                  : e
+              ),
+              {
+                workItem: currentItem,
+                workDir,
+                reviewContent: iterationReviewOutput,
+                reviewVerdict,
+              }
+            )
           : [];
+
+      for (const ev of lastEvalResults) {
+        incrementCounter('agenthub_loop_eval_total', 'Loop harness eval outcomes', {
+          loop_id: loop.id,
+          eval_id: ev.evalId,
+          type: ev.type,
+          passed: ev.passed ? 'true' : 'false',
+        });
+      }
 
       if (workItemId && lastEvalResults.length > 0) {
         logWorkItemActivity({
@@ -872,26 +942,60 @@ export async function runAgentLoop(input: {
             event: 'loop_eval_completed',
             evalResults: lastEvalResults,
             loopId: loop.id,
+            testingVerdict: iterationTestingVerdict,
           },
         });
+      }
+
+      if (currentItem && workDir && lastEvalResults.length > 0) {
+        try {
+          writeLoopEvalArtifact({
+            item: currentItem,
+            workDir,
+            iteration,
+            evalResults: lastEvalResults,
+            reviewVerdict,
+            testingVerdict: iterationTestingVerdict,
+          });
+        } catch {
+          /* best-effort */
+        }
       }
 
       updateLoopRun(loopRunId, {
         iteration,
         verdict: reviewVerdict,
         loopStatus: 'running',
+        evalSummary: formatEvalBlockSummary(lastEvalResults),
+        testingVerdict: iterationTestingVerdict,
       });
 
       const iterationDurationMs = Date.now() - iterationStartMs;
       recordIterationDuration(loop.id, iterationDurationMs, loop.steps.length);
 
       const evalsPassed = evals.length === 0 || allEvalsPassed(lastEvalResults);
-      const evalBlocked = loop.until === 'eval_pass' && !evalsPassed;
+      const stepOutputMatched =
+        loop.until !== 'step_output_match' ||
+        (typeof loop.untilMatchPattern === 'string' &&
+          (() => {
+            try {
+              return new RegExp(loop.untilMatchPattern, 'im').test(matchContent);
+            } catch {
+              return false;
+            }
+          })());
+
+      const evalBlocked =
+        (loop.until === 'eval_pass' && !evalsPassed) ||
+        (loop.until === 'step_output_match' && !stepOutputMatched) ||
+        testingBlocked;
       const evalSummary = formatEvalBlockSummary(lastEvalResults);
 
       if (workItemId) {
         const iterationOutcome = evalBlocked
-          ? `${reviewVerdict} (evals blocked: ${evalSummary})`
+          ? testingBlocked
+            ? `${reviewVerdict} (tester FAIL)`
+            : `${reviewVerdict} (evals blocked: ${evalSummary})`
           : reviewVerdict;
         logWorkItemActivity({
           workItemId,
@@ -901,8 +1005,10 @@ export async function runAgentLoop(input: {
             loopIteration: iteration,
             maxLoopIterations: maxIterations,
             verdict: reviewVerdict,
+            testingVerdict: iterationTestingVerdict,
             evalsPassed,
             evalBlocked,
+            testingBlocked,
             event: 'loop_iteration_completed',
             implementAuditId: iterationImplementAuditId,
             reviewAuditId: iterationReviewAuditId,
@@ -918,9 +1024,12 @@ export async function runAgentLoop(input: {
       }
 
       const loopSucceeded =
-        loop.until === 'eval_pass'
+        !testingBlocked &&
+        (loop.until === 'eval_pass'
           ? evalsPassed
-          : loop.until === 'verdict_approved' && reviewVerdict === 'approved';
+          : loop.until === 'step_output_match'
+            ? stepOutputMatched
+            : loop.until === 'verdict_approved' && reviewVerdict === 'approved');
 
       if (loopSucceeded) {
         loopStatus = 'approved';
@@ -937,19 +1046,48 @@ export async function runAgentLoop(input: {
             /* artifact publish is best-effort */
           }
         }
-        completeLoopRun(loopRunId, { iteration, verdict: reviewVerdict, loopStatus: 'approved' });
+        completeLoopRun(loopRunId, {
+          iteration,
+          verdict: reviewVerdict,
+          loopStatus: 'approved',
+          evalSummary,
+          testingVerdict: iterationTestingVerdict,
+        });
         break;
       }
 
-      // Surface harness failures to the next implement pass even when review said APPROVED.
+      // Surface harness / tester failures to the next implement pass even when review said APPROVED.
       if (evalBlocked) {
-        lastReviewFeedback = appendEvalFailuresToFeedback(lastReviewFeedback || iterationReviewOutput, lastEvalResults);
+        lastReviewFeedback = appendEvalFailuresToFeedback(
+          lastReviewFeedback || iterationReviewOutput,
+          lastEvalResults
+        );
+        if (testingBlocked) {
+          lastReviewFeedback = [
+            lastReviewFeedback,
+            '',
+            '## Tester step failed (must PASS before the loop can complete)',
+            iterationTestingOutput.slice(0, 1500) || 'Tester reported FAIL.',
+          ].join('\n');
+        }
+        if (loop.until === 'step_output_match' && !stepOutputMatched) {
+          lastReviewFeedback = [
+            lastReviewFeedback,
+            '',
+            `## Step output did not match /${loop.untilMatchPattern}/`,
+            `Step: ${matchStepName ?? '(last)'}`,
+            matchContent.slice(0, 800) || '(empty)',
+          ].join('\n');
+        }
       }
 
       const needsAnotherPass =
-        loop.until === 'eval_pass'
+        testingBlocked ||
+        (loop.until === 'eval_pass'
           ? !evalsPassed
-          : reviewVerdict === 'changes_requested';
+          : loop.until === 'step_output_match'
+            ? !stepOutputMatched
+            : reviewVerdict === 'changes_requested');
 
       const shouldContinue = autoLoop && needsAnotherPass && iteration < maxIterations;
 

@@ -184,12 +184,16 @@ crewtopus/
 ## Architecture
 
 ```
-Frontend (React)  ──REST/WS──▶  Backend (Express)
-                                    ├── Agent adapters (CLI + mock)
+Frontend (React)  ──REST/WS──▶  Backend (Express + SQLite)
+                                    ├── Loop worker (single job runtime)
+                                    ├── Loop engine + eval harness (dual gates)
+                                    ├── Outbound harness → CLI adapters (+ mock)
                                     ├── Lifecycle (BA / PM / pipeline)
-                                    ├── Privacy guard + audit
-                                    └── SQLite + optional Redis
+                                    ├── Privacy guard + approval + audit
+                                    └── Optional Redis
 ```
+
+Board pipelines, workflow templates, and supervisor tasks all **enqueue** onto the same loop worker. See [docs/wiki/Architecture.md](./docs/wiki/Architecture.md).
 
 ---
 

@@ -205,6 +205,7 @@ export type LoopEvalType =
   | 'test_command'
   | 'file_exists'
   | 'git_diff'
+  | 'step_output_match'
   | 'custom';
 
 export interface LoopEval {
@@ -229,9 +230,22 @@ export interface WorkflowLoop {
   maxIterations: number;
   onExhausted: WorkflowLoopOnExhausted;
   verdictParser?: WorkflowVerdictParser;
+  /**
+   * Required when verdictParser is `custom_regex`.
+   * Match → approved when the regex matches; otherwise changes_requested.
+   * Prefer /APPROVED/i style patterns, or use named group (?<verdict>APPROVED|CHANGES_REQUESTED).
+   */
+  verdictRegex?: string;
   /** How to treat review output when verdict cannot be parsed. Default: treat_as_changes_requested */
   onUnknownVerdict?: OnUnknownVerdict;
   evals?: LoopEval[];
+  /**
+   * Required when until is `step_output_match`.
+   * Regex tested against the named step output (or the last step when untilMatchStep is omitted).
+   */
+  untilMatchPattern?: string;
+  /** Step name whose output is tested for step_output_match (default: last step in the loop). */
+  untilMatchStep?: string;
   /** Abort loop with escalation when cumulative outbound tokens exceed this budget. */
   maxTokensPerLoop?: number;
   /** Abort loop with escalation when wall-clock duration exceeds this limit (ms). */

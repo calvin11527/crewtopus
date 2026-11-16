@@ -218,6 +218,56 @@ function FilesSection({
   );
 }
 
+function deriveTestingVerdict(steps: PipelineStepResult[]): 'pass' | 'fail' | 'unknown' | 'na' {
+  const testing = [...steps].reverse().find((s) => s.phase === 'testing');
+  if (!testing) return 'na';
+  const first = (testing.content || '').split('\n')[0]?.trim().toUpperCase() || '';
+  if (/^FAIL\b/.test(first) || first.includes('FAIL')) return 'fail';
+  if (/^PASS\b/.test(first) || first.includes('PASS')) return 'pass';
+  if (/\bFAIL\b/i.test(testing.content || '')) return 'fail';
+  if (/\bPASS\b/i.test(testing.content || '')) return 'pass';
+  return 'unknown';
+}
+
+/** Dual-gate strip: reviewer · tester · harness evidence. */
+function LoopGateLights({
+  reviewVerdict,
+  steps,
+  evalResults,
+}: {
+  reviewVerdict: string;
+  steps: PipelineStepResult[];
+  evalResults?: EvalResult[];
+}) {
+  const tester = deriveTestingVerdict(steps);
+  const harness =
+    !evalResults || evalResults.length === 0
+      ? 'na'
+      : evalResults.every((e) => e.passed)
+        ? 'pass'
+        : 'fail';
+  const reviewer = reviewVerdict === 'approved' ? 'pass' : reviewVerdict === 'changes_requested' ? 'fail' : 'unknown';
+
+  const lights: Array<{ id: string; label: string; state: string }> = [
+    { id: 'reviewer', label: 'Reviewer', state: reviewer },
+    { id: 'tester', label: 'Tester', state: tester },
+    { id: 'harness', label: 'Harness', state: harness },
+  ];
+
+  return (
+    <ul className="loop-gate-lights" aria-label="Completion gates">
+      {lights.map((g) => (
+        <li key={g.id} className={`loop-gate-light loop-gate-light--${g.state}`}>
+          <span className="loop-gate-light-mark" aria-hidden>
+            {g.state === 'pass' ? '✓' : g.state === 'fail' ? '✗' : g.state === 'na' ? '–' : '?'}
+          </span>
+          <span>{g.label}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function RunSection({
   boardItem,
   agentConsole,
@@ -263,6 +313,11 @@ function RunSection({
             {' · '}
             {pipelineResult.iterations} iteration(s) · {LOOP_STATUS_LABEL[pipelineResult.loopStatus]}
           </p>
+          <LoopGateLights
+            reviewVerdict={pipelineResult.reviewVerdict}
+            steps={pipelineResult.steps}
+            evalResults={pipelineResult.evalResults}
+          />
           {pipelineResult.evalResults && pipelineResult.evalResults.length > 0 && (
             <ul className="eval-checklist">
               {pipelineResult.evalResults.map((e) => (

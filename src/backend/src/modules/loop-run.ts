@@ -17,6 +17,8 @@ export interface LoopRun {
   loopStatus?: LoopStatus;
   jobId?: string;
   error?: string;
+  evalSummary?: string;
+  testingVerdict?: string;
   startedAt: string;
   completedAt?: string;
 }
@@ -33,6 +35,8 @@ interface LoopRunRow {
   loop_status: string | null;
   job_id: string | null;
   error: string | null;
+  eval_summary?: string | null;
+  testing_verdict?: string | null;
   started_at: string;
   completed_at: string | null;
 }
@@ -50,6 +54,8 @@ function mapLoopRun(row: LoopRunRow): LoopRun {
     loopStatus: (row.loop_status as LoopStatus) ?? undefined,
     jobId: row.job_id ?? undefined,
     error: row.error ?? undefined,
+    evalSummary: row.eval_summary ?? undefined,
+    testingVerdict: row.testing_verdict ?? undefined,
     startedAt: row.started_at,
     completedAt: row.completed_at ?? undefined,
   };
@@ -86,7 +92,13 @@ export function createLoopRun(input: {
 
 export function updateLoopRun(
   id: string,
-  updates: { iteration?: number; verdict?: ReviewVerdict; loopStatus?: LoopStatus }
+  updates: {
+    iteration?: number;
+    verdict?: ReviewVerdict;
+    loopStatus?: LoopStatus;
+    evalSummary?: string;
+    testingVerdict?: string;
+  }
 ): void {
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -103,6 +115,14 @@ export function updateLoopRun(
     sets.push('loop_status = ?');
     params.push(updates.loopStatus);
   }
+  if (updates.evalSummary !== undefined) {
+    sets.push('eval_summary = ?');
+    params.push(updates.evalSummary);
+  }
+  if (updates.testingVerdict !== undefined) {
+    sets.push('testing_verdict = ?');
+    params.push(updates.testingVerdict);
+  }
 
   if (sets.length === 0) return;
   params.push(id);
@@ -111,13 +131,28 @@ export function updateLoopRun(
 
 export function completeLoopRun(
   id: string,
-  result: { iteration: number; verdict: ReviewVerdict; loopStatus: LoopStatus }
+  result: {
+    iteration: number;
+    verdict: ReviewVerdict;
+    loopStatus: LoopStatus;
+    evalSummary?: string;
+    testingVerdict?: string;
+  }
 ): void {
   getDatabase()
     .prepare(
-      `UPDATE loop_run SET iteration = ?, verdict = ?, loop_status = ?, status = 'completed', completed_at = ? WHERE id = ?`
+      `UPDATE loop_run SET iteration = ?, verdict = ?, loop_status = ?, eval_summary = COALESCE(?, eval_summary),
+       testing_verdict = COALESCE(?, testing_verdict), status = 'completed', completed_at = ? WHERE id = ?`
     )
-    .run(result.iteration, result.verdict, result.loopStatus, now(), id);
+    .run(
+      result.iteration,
+      result.verdict,
+      result.loopStatus,
+      result.evalSummary ?? null,
+      result.testingVerdict ?? null,
+      now(),
+      id
+    );
 }
 
 export function failLoopRun(id: string, error: string): void {

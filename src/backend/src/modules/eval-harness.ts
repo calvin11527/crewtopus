@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { resolveWithinRoot } from '../utils/safe-path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import type { OnUnknownVerdict, WorkflowVerdictParser } from '../types';
 import type { WorkItem } from '../types';
 import { hasLinkedRepository, resolveWorkItemWorkDir } from './work-item-context';
@@ -12,10 +12,13 @@ export type { WorkDirCorpus };
 export { buildWorkDirCorpus };
 
 export type ReviewVerdict = 'approved' | 'changes_requested' | 'unknown';
+export type TestingVerdict = 'pass' | 'fail' | 'unknown';
 
 export interface ParseReviewVerdictOptions {
   parser?: WorkflowVerdictParser;
   onUnknownVerdict?: OnUnknownVerdict;
+  /** Required when parser is custom_regex. */
+  customRegex?: string;
 }
 
 /** Extract verdict from a structured JSON block (fenced or inline). */
@@ -40,12 +43,42 @@ function parseJsonVerdictBlock(content: string): ReviewVerdict | null {
   return null;
 }
 
+function parseCustomRegexVerdict(content: string, pattern: string): ReviewVerdict | null {
+  let re: RegExp;
+  try {
+    re = new RegExp(pattern, 'im');
+  } catch {
+    return null;
+  }
+  const match = content.match(re);
+  if (!match) return null;
+  const named = (match.groups?.verdict ?? match.groups?.status ?? '').toUpperCase();
+  if (named.includes('CHANGES')) return 'changes_requested';
+  if (named.includes('APPROVED') || named === 'PASS' || named === 'OK') return 'approved';
+  const raw = (match[1] ?? match[0] ?? '').toUpperCase();
+  if (raw.includes('CHANGES')) return 'changes_requested';
+  if (raw.includes('APPROVED') || /\bPASS\b/.test(raw)) return 'approved';
+  // Pattern matched without a clear negative → treat as approved (caller chose the gate).
+  return 'approved';
+}
+
 /** Parse reviewer output into APPROVED / CHANGES_REQUESTED / unknown. */
 export function parseReviewVerdict(
   content: string,
   options: ParseReviewVerdictOptions = {}
 ): ReviewVerdict {
   const parser = options.parser ?? 'approved_changes_requested';
+
+  if (parser === 'custom_regex') {
+    if (!options.customRegex?.trim()) {
+      const onUnknown = options.onUnknownVerdict ?? 'treat_as_changes_requested';
+      return onUnknown === 'treat_as_changes_requested' ? 'changes_requested' : 'unknown';
+    }
+    const fromCustom = parseCustomRegexVerdict(content, options.customRegex);
+    if (fromCustom) return fromCustom;
+    const onUnknown = options.onUnknownVerdict ?? 'treat_as_changes_requested';
+    return onUnknown === 'treat_as_changes_requested' ? 'changes_requested' : 'unknown';
+  }
 
   if (parser === 'json_block' || parser === 'approved_changes_requested') {
     const fromJson = parseJsonVerdictBlock(content);
@@ -63,12 +96,26 @@ export function parseReviewVerdict(
   return 'unknown';
 }
 
+/**
+ * Parse tester step output. Prefer a first-line PASS / FAIL;
+ * otherwise scan the body (FAIL wins over PASS when both appear).
+ */
+export function parseTestingVerdict(content: string): TestingVerdict {
+  const firstLine = content.split('\n')[0]?.trim().toUpperCase() || '';
+  if (/^FAIL\b/.test(firstLine) || firstLine.includes('FAIL')) return 'fail';
+  if (/^PASS\b/.test(firstLine) || firstLine.includes('PASS')) return 'pass';
+  if (/\bFAIL\b/i.test(content)) return 'fail';
+  if (/\bPASS\b/i.test(content)) return 'pass';
+  return 'unknown';
+}
+
 export type LoopEvalType =
   | 'verdict_parse'
   | 'acceptance_criteria'
   | 'test_command'
   | 'file_exists'
   | 'git_diff'
+  | 'step_output_match'
   | 'custom';
 
 export interface LoopEval {
@@ -412,8 +459,35 @@ function evalAcceptanceCriteria(evalDef: LoopEval, ctx: EvalContext): EvalResult
 }
 
 export interface DetectedTestCommand {
+  /** Human-readable label (for logs / UI). */
   command: string;
+  /** argv for execFileSync — never passed through a shell. */
+  argv: [string, ...string[]];
   runner: 'npm' | 'pytest' | 'cargo' | 'go';
+}
+
+/** Allowlisted display command → argv. Arbitrary shell strings are rejected. */
+export const ALLOWED_TEST_COMMANDS: Record<string, DetectedTestCommand> = {
+  'npm test': { command: 'npm test', argv: ['npm', 'test'], runner: 'npm' },
+  'npm run test': { command: 'npm run test', argv: ['npm', 'run', 'test'], runner: 'npm' },
+  'python -m pytest -q': {
+    command: 'python -m pytest -q',
+    argv: ['python', '-m', 'pytest', '-q'],
+    runner: 'pytest',
+  },
+  'python3 -m pytest -q': {
+    command: 'python3 -m pytest -q',
+    argv: ['python3', '-m', 'pytest', '-q'],
+    runner: 'pytest',
+  },
+  'cargo test': { command: 'cargo test', argv: ['cargo', 'test'], runner: 'cargo' },
+  'go test ./...': { command: 'go test ./...', argv: ['go', 'test', './...'], runner: 'go' },
+};
+
+/** Resolve a config command string to an allowlisted argv form, or null. */
+export function resolveAllowlistedTestCommand(command: string): DetectedTestCommand | null {
+  const normalized = command.trim().replace(/\s+/g, ' ');
+  return ALLOWED_TEST_COMMANDS[normalized] ?? null;
 }
 
 /** Infer the repo's test runner from lockfiles / manifests. Never runs user-supplied strings. */
@@ -425,7 +499,7 @@ export function detectRepoTestCommand(repoRoot: string): DetectedTestCommand | n
     try {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { scripts?: Record<string, string> };
       if (pkg.scripts?.test) {
-        return { command: 'npm test', runner: 'npm' };
+        return ALLOWED_TEST_COMMANDS['npm test'];
       }
     } catch {
       /* ignore malformed package.json */
@@ -434,14 +508,14 @@ export function detectRepoTestCommand(repoRoot: string): DetectedTestCommand | n
 
   const pyMarkers = ['pytest.ini', 'conftest.py', 'tox.ini'];
   if (pyMarkers.some((f) => fs.existsSync(path.join(repoRoot, f)))) {
-    return { command: 'python -m pytest -q', runner: 'pytest' };
+    return ALLOWED_TEST_COMMANDS['python -m pytest -q'];
   }
   const pyproject = path.join(repoRoot, 'pyproject.toml');
   if (fs.existsSync(pyproject)) {
     try {
       const text = fs.readFileSync(pyproject, 'utf-8');
       if (/\bpytest\b/i.test(text) || /\b\[tool\.pytest/i.test(text)) {
-        return { command: 'python -m pytest -q', runner: 'pytest' };
+        return ALLOWED_TEST_COMMANDS['python -m pytest -q'];
       }
     } catch {
       /* ignore */
@@ -452,7 +526,7 @@ export function detectRepoTestCommand(repoRoot: string): DetectedTestCommand | n
     try {
       const names = fs.readdirSync(testsDir);
       if (names.some((n) => n.startsWith('test_') && n.endsWith('.py'))) {
-        return { command: 'python -m pytest -q', runner: 'pytest' };
+        return ALLOWED_TEST_COMMANDS['python -m pytest -q'];
       }
     } catch {
       /* ignore */
@@ -460,10 +534,10 @@ export function detectRepoTestCommand(repoRoot: string): DetectedTestCommand | n
   }
 
   if (fs.existsSync(path.join(repoRoot, 'Cargo.toml'))) {
-    return { command: 'cargo test', runner: 'cargo' };
+    return ALLOWED_TEST_COMMANDS['cargo test'];
   }
   if (fs.existsSync(path.join(repoRoot, 'go.mod'))) {
-    return { command: 'go test ./...', runner: 'go' };
+    return ALLOWED_TEST_COMMANDS['go test ./...'];
   }
 
   return null;
@@ -489,10 +563,11 @@ function evalTestCommand(evalDef: LoopEval, ctx: EvalContext): EvalResult {
     if (repoRoot) cwd = repoRoot;
   }
 
-  let command = typeof evalDef.config?.command === 'string' ? evalDef.config.command : '';
-  if (detect || !command) {
-    const detected = detectRepoTestCommand(cwd);
-    if (!detected) {
+  let resolved: DetectedTestCommand | null = null;
+  const configured = typeof evalDef.config?.command === 'string' ? evalDef.config.command : '';
+  if (detect || !configured) {
+    resolved = detectRepoTestCommand(cwd);
+    if (!resolved) {
       return {
         evalId: evalDef.id,
         type: evalDef.type,
@@ -501,25 +576,40 @@ function evalTestCommand(evalDef: LoopEval, ctx: EvalContext): EvalResult {
         evidence: { cwd, skipped: true, detect: true },
       };
     }
-    command = detected.command;
+  } else {
+    resolved = resolveAllowlistedTestCommand(configured);
+    if (!resolved) {
+      return {
+        evalId: evalDef.id,
+        type: evalDef.type,
+        passed: false,
+        details:
+          `Rejected test_command "${configured}": only allowlisted argv runners are permitted ` +
+          `(npm test, npm run test, python -m pytest -q, cargo test, go test ./...).`,
+        evidence: { command: configured, cwd, rejected: true },
+      };
+    }
   }
 
-  if (!command) {
-    return { evalId: evalDef.id, type: evalDef.type, passed: false, details: 'test_command eval missing config.command' };
-  }
   if (!fs.existsSync(cwd)) {
-    return { evalId: evalDef.id, type: evalDef.type, passed: false, details: `Working directory not found: ${cwd}` };
+    return {
+      evalId: evalDef.id,
+      type: evalDef.type,
+      passed: false,
+      details: `Working directory not found: ${cwd}`,
+    };
   }
 
   const timeoutMs = Number(evalDef.config?.timeoutMs) || 120_000;
+  const [bin, ...args] = resolved.argv;
   try {
-    execSync(command, { cwd, encoding: 'utf-8', timeout: timeoutMs, stdio: 'pipe' });
+    execFileSync(bin, args, { cwd, encoding: 'utf-8', timeout: timeoutMs, stdio: 'pipe' });
     return {
       evalId: evalDef.id,
       type: evalDef.type,
       passed: true,
-      details: `Command succeeded: ${command}`,
-      evidence: { command, cwd },
+      details: `Command succeeded: ${resolved.command}`,
+      evidence: { command: resolved.command, argv: resolved.argv, cwd },
     };
   } catch (err) {
     const error = err as { status?: number; stderr?: string; stdout?: string; message?: string };
@@ -527,9 +617,10 @@ function evalTestCommand(evalDef: LoopEval, ctx: EvalContext): EvalResult {
       evalId: evalDef.id,
       type: evalDef.type,
       passed: false,
-      details: `Command failed (exit ${error.status ?? '?'}): ${command}`,
+      details: `Command failed (exit ${error.status ?? '?'}): ${resolved.command}`,
       evidence: {
-        command,
+        command: resolved.command,
+        argv: resolved.argv,
         cwd,
         stderr: error.stderr?.slice(0, 500),
         stdout: error.stdout?.slice(0, 300),
@@ -537,6 +628,43 @@ function evalTestCommand(evalDef: LoopEval, ctx: EvalContext): EvalResult {
       },
     };
   }
+}
+
+function evalStepOutputMatch(evalDef: LoopEval, ctx: EvalContext): EvalResult {
+  const pattern = typeof evalDef.config?.pattern === 'string' ? evalDef.config.pattern : '';
+  if (!pattern.trim()) {
+    return {
+      evalId: evalDef.id,
+      type: evalDef.type,
+      passed: false,
+      details: 'step_output_match eval missing config.pattern',
+    };
+  }
+  const content =
+    (typeof evalDef.config?.content === 'string' ? evalDef.config.content : undefined) ??
+    ctx.reviewContent ??
+    '';
+  let re: RegExp;
+  try {
+    re = new RegExp(pattern, 'im');
+  } catch (err) {
+    return {
+      evalId: evalDef.id,
+      type: evalDef.type,
+      passed: false,
+      details: `Invalid regex: ${(err as Error).message}`,
+    };
+  }
+  const passed = re.test(content);
+  return {
+    evalId: evalDef.id,
+    type: evalDef.type,
+    passed,
+    details: passed
+      ? `Step output matched /${pattern}/`
+      : `Step output did not match /${pattern}/`,
+    evidence: { pattern, contentPreview: content.slice(0, 400) },
+  };
 }
 
 function evalGitDiff(evalDef: LoopEval, ctx: EvalContext): EvalResult {
@@ -607,6 +735,16 @@ export function runEval(evalDef: LoopEval, ctx: EvalContext): EvalResult {
       return evalTestCommand(evalDef, ctx);
     case 'git_diff':
       return evalGitDiff(evalDef, ctx);
+    case 'step_output_match':
+      return evalStepOutputMatch(evalDef, ctx);
+    case 'custom':
+      return {
+        evalId: evalDef.id,
+        type: evalDef.type,
+        passed: false,
+        details:
+          'Unsupported eval type: custom. Use file_exists, test_command, git_diff, verdict_parse, acceptance_criteria, or step_output_match.',
+      };
     default:
       return {
         evalId: evalDef.id,

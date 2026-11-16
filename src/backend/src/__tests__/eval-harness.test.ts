@@ -8,6 +8,7 @@ import {
   runLoopEvals,
   allEvalsPassed,
   parseReviewVerdict,
+  parseTestingVerdict,
   extractCriterionEvidenceTokens,
   buildWorkDirCorpus,
   detectRepoTestCommand,
@@ -117,13 +118,29 @@ describe('Eval Harness (M5)', () => {
     expect(result.details).toContain('Skipped');
   });
 
-  it('should fail test_command when command exits non-zero', () => {
+  it('rejects non-allowlisted test_command shell strings', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-cmd-'));
     const result = runEval(
       { id: 't', type: 'test_command', config: { command: 'exit 1', cwd: tmp } },
       { workDir: tmp }
     );
     expect(result.passed).toBe(false);
+    expect(result.details).toMatch(/allowlisted|Rejected/i);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('fails allowlisted npm test when the script exits non-zero', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-npm-fail-'));
+    fs.writeFileSync(
+      path.join(tmp, 'package.json'),
+      JSON.stringify({ name: 'x', scripts: { test: 'node -e "process.exit(1)"' } })
+    );
+    const result = runEval(
+      { id: 't', type: 'test_command', config: { command: 'npm test', cwd: tmp } },
+      { workDir: tmp }
+    );
+    expect(result.passed).toBe(false);
+    expect(result.details).toContain('npm test');
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
@@ -134,8 +151,23 @@ describe('Eval Harness (M5)', () => {
       path.join(tmp, 'package.json'),
       JSON.stringify({ name: 'x', scripts: { test: 'echo ok' } })
     );
-    expect(detectRepoTestCommand(tmp)).toEqual({ command: 'npm test', runner: 'npm' });
+    expect(detectRepoTestCommand(tmp)).toEqual({
+      command: 'npm test',
+      argv: ['npm', 'test'],
+      runner: 'npm',
+    });
     fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('parses custom_regex and testing verdicts', () => {
+    expect(
+      parseReviewVerdict('SHIP IT\nok', {
+        parser: 'custom_regex',
+        customRegex: 'SHIP\\s+IT|CHANGES',
+      })
+    ).toBe('approved');
+    expect(parseTestingVerdict('PASS\nall green')).toBe('pass');
+    expect(parseTestingVerdict('FAIL\nbroken')).toBe('fail');
   });
 
   it('default evals gate on verdict + detected tests + git diff, not keyword AC', () => {

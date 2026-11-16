@@ -101,16 +101,17 @@ npm run test:frontend -- ConsoleFilters StreamingConsole Logs log-export log-eve
 ```
 Crewtopus
 ├── Backend (Node.js/Express + WebSocket)
-│   ├── Agent Adapters (Claude, Grok, Copilot, Antigravity, Ollama)
-│   ├── Supervisor Engine (central orchestration)
-│   ├── Workflow Engine (deterministic execution)
-│   ├── Privacy Guard (secret scanning)
-│   ├── Approval Gate (human-in-the-loop)
-│   ├── Audit Logger (immutable logging)
-│   ├── Proactive Engine (file watchers, triggers)
-│   └── Consensus Engine (multi-agent decisions)
+│   ├── Loop Worker (single job runtime for board + workflows)
+│   ├── Loop Engine + Eval Harness (implement → test → review, dual gates)
+│   ├── Outbound Pipeline (context → privacy → approval → adapter → audit)
+│   ├── Agent Adapters (Claude, Grok, Copilot, Antigravity, Ollama, Mock)
+│   ├── Full Lifecycle (BA → PM → developer pipeline)
+│   ├── Workflow templates (enqueue loops; do not fork a second runtime)
+│   ├── Supervisor (capability routing → enqueue)
+│   ├── Privacy Guard + Approval Gate + Audit Logger
+│   └── Proactive Engine (file watchers, triggers)
 ├── Frontend (React + TypeScript + Vite)
-│   ├── Dashboard
+│   ├── Dashboard / Scrum Board (gate lights on pipeline results)
 │   ├── Workspace Management
 │   ├── Agent Registry
 │   ├── Workflow Designer
@@ -118,6 +119,8 @@ Crewtopus
 │   └── Audit Log Viewer
 └── Infra: ./demo.sh (API+UI). k8s/Grafana is experimental.
 ```
+
+**Harness notes:** loop definitions fail fast on unsupported `until` / parsers / eval types; `test_command` runs allowlisted argv only (`npm test`, pytest, cargo, go); tester `FAIL` blocks Done like review `CHANGES_REQUESTED`; step transcripts land under `loop-artifacts/`.
 
 ## Project Structure
 

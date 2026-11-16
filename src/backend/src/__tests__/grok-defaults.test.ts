@@ -98,7 +98,7 @@ describe('grok run defaults', () => {
       expect(byId.custom).toEqual({ model: 'grok-build', effort: 'medium' });
       expect(byId.empty).toEqual({ model: 'grok-4.7', effort: 'medium' });
       expect(getDatabase().prepare('SELECT version FROM schema_version').get()).toEqual({
-        version: 13,
+        version: 14,
       });
     } finally {
       closeDatabase();
