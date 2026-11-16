@@ -63,13 +63,20 @@ export function resolveHarnessProfile(
   const implPerm = wsConfig.implementationPermission as HarnessProfile['implementationPermission'] | undefined;
   const reviewPerm = wsConfig.reviewPermission as HarnessProfile['reviewPermission'] | undefined;
 
+  const rootsFromWs = Array.isArray(wsConfig.allowedWriteRoots)
+    ? (wsConfig.allowedWriteRoots as unknown[]).filter((r): r is string => typeof r === 'string' && r.trim().length > 0)
+    : [];
+  const rootsFromItem = Array.isArray(itemMeta.allowedWriteRoots)
+    ? (itemMeta.allowedWriteRoots as unknown[]).filter((r): r is string => typeof r === 'string' && r.trim().length > 0)
+    : [];
+
   return {
     tokenBudget,
     maxSensitivity: DEFAULT_PROFILE.maxSensitivity,
     retryPolicy: { ...DEFAULT_RETRY_POLICY, maxAttempts },
     auditSnapshots: !envFlag('false', 'CREWTOPUS_AUDIT_SNAPSHOTS', 'AGENTHUB_AUDIT_SNAPSHOTS'),
     cliMaxOutputBytes: envNumber(10 * 1024 * 1024, 'CREWTOPUS_CLI_MAX_OUTPUT_BYTES', 'AGENTHUB_CLI_MAX_OUTPUT_BYTES'),
-    allowedWriteRoots: DEFAULT_PROFILE.allowedWriteRoots,
+    allowedWriteRoots: rootsFromItem.length > 0 ? rootsFromItem : rootsFromWs,
     implementationPermission: implPerm ?? DEFAULT_PROFILE.implementationPermission,
     reviewPermission: reviewPerm ?? DEFAULT_PROFILE.reviewPermission,
   };

@@ -28,6 +28,7 @@ import { incrementCounter } from '../metrics';
 import { broadcast } from '../websocket';
 import { now } from '../utils/helpers';
 import { envFlag, envWorkDir } from '../utils/env';
+import { isPathInside } from '../utils/safe-path';
 
 export class PrivacyBlockedError extends Error {
   readonly reasons: string[];
@@ -198,9 +199,30 @@ export async function executeOutboundPipeline(request: OutboundRequest): Promise
   }
   assertAgentTypeWithinBudget(request.agentType);
   const workItem = request.workItemId ? getWorkItem(request.workItemId) : null;
-  const workspace = request.workspaceId ? getWorkspace(request.workspaceId) : null;
+  const workspace = request.workspaceId
+    ? getWorkspace(request.workspaceId)
+    : workItem?.workspaceId
+      ? getWorkspace(workItem.workspaceId)
+      : null;
   const profile = resolveHarnessProfile(workspace, workItem);
   const retryPolicy = request.retryPolicy ?? profile.retryPolicy;
+
+  if (profile.allowedWriteRoots.length > 0) {
+    const cwd = path.resolve(request.outputDir || request.basePath || envWorkDir() || process.cwd());
+    const allowed = profile.allowedWriteRoots.some((root) => {
+      try {
+        return isPathInside(path.resolve(root), cwd) || path.resolve(root) === cwd;
+      } catch {
+        return false;
+      }
+    });
+    if (!allowed) {
+      throw new Error(
+        `Outbound cwd "${cwd}" is outside harness allowedWriteRoots ` +
+          `(${profile.allowedWriteRoots.join(', ')}). Update workspace config or the work directory.`
+      );
+    }
+  }
 
   const ctxHash = hashContext(request.contextScope);
   const ctxHashFull = hashContextFull(request.contextScope);

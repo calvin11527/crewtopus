@@ -648,6 +648,19 @@ export function initDatabase(): Database.Database {
       db!.prepare('UPDATE schema_version SET version = ?').run(13);
       version = 13;
     }
+
+    if (version < 14) {
+      const loopRunCols = db!.prepare('PRAGMA table_info(loop_run)').all() as { name: string }[];
+      const loopRunNames = new Set(loopRunCols.map((c) => c.name));
+      if (!loopRunNames.has('eval_summary')) {
+        db!.exec('ALTER TABLE loop_run ADD COLUMN eval_summary TEXT');
+      }
+      if (!loopRunNames.has('testing_verdict')) {
+        db!.exec('ALTER TABLE loop_run ADD COLUMN testing_verdict TEXT');
+      }
+      db!.prepare('UPDATE schema_version SET version = ?').run(14);
+      version = 14;
+    }
   });
 
   migrate();

@@ -4232,6 +4232,48 @@ body {
 }
 .pipeline-result-panel h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
 .pipeline-verdict { font-size: 0.85rem; margin: 0 0 12px; color: var(--text-secondary); }
+
+.loop-gate-lights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.loop-gate-light {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--border-glass);
+  background: color-mix(in srgb, var(--bg-glass) 80%, transparent);
+  color: var(--text-secondary);
+}
+
+.loop-gate-light-mark {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.loop-gate-light--pass {
+  border-color: color-mix(in srgb, var(--accent-green) 45%, var(--border-glass));
+  color: var(--accent-green);
+}
+
+.loop-gate-light--fail {
+  border-color: color-mix(in srgb, #e85d5d 45%, var(--border-glass));
+  color: #e85d5d;
+}
+
+.loop-gate-light--unknown,
+.loop-gate-light--na {
+  opacity: 0.85;
+}
 .pipeline-step-block { margin-bottom: 12px; }
 .pipeline-step-block:last-child { margin-bottom: 0; }
 .pipeline-step-header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 6px; font-size: 0.8rem; }

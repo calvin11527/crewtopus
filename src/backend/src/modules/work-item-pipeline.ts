@@ -87,7 +87,8 @@ function grokCopilotWorkflowDefinition(): WorkflowDefinition {
             config: {
               prompt:
                 'Run or write tests for the implementation in the prior step. ' +
-                'Report PASS or FAIL with a short summary of what was validated.',
+                'Start your response with exactly PASS or FAIL on the first line, then a short summary. ' +
+                'The harness treats FAIL as a hard gate (same as CHANGES_REQUESTED).',
             },
           },
           {
@@ -138,7 +139,8 @@ function mockDemoWorkflowDefinition(): WorkflowDefinition {
             config: {
               prompt:
                 'Run or write tests for the implementation in the prior step. ' +
-                'Report PASS or FAIL with a short summary of what was validated.',
+                'Start your response with exactly PASS or FAIL on the first line, then a short summary. ' +
+                'The harness treats FAIL as a hard gate (same as CHANGES_REQUESTED).',
             },
           },
           {

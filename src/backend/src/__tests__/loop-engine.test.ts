@@ -399,4 +399,59 @@ describe('Loop Engine (AH-39)', () => {
     expect(getWorkItem(item.id)?.loopStatus).toBe('cancelled');
     clearLoopCancel(item.id);
   });
+
+  it('blocks completion when the testing step reports FAIL even if review APPROVED', async () => {
+    jest.spyOn(getAdapter('mock'), 'execute').mockImplementation(async (input: AdapterInput): Promise<AdapterOutput> => {
+      const capability = (input.config?.capability as string) || '';
+      if (capability === 'testing') {
+        return { content: 'FAIL\nUnit suite red.', tokenCount: 10, metadata: { adapter: 'mock', capability } };
+      }
+      if (capability === 'review') {
+        return { content: 'APPROVED\nLooks fine.', tokenCount: 10, metadata: { adapter: 'mock', capability } };
+      }
+      return { content: '## Implementation\nok', tokenCount: 10, metadata: { adapter: 'mock', capability } };
+    });
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'loop-tester-fail-'));
+    process.env.AGENTHUB_WORK_DIR = tmp;
+    const item = createWorkItem({
+      type: 'task',
+      title: 'Tester gate',
+      assignedAgentType: 'mock',
+      status: 'todo',
+    });
+
+    const definition: WorkflowDefinition = {
+      name: 'Tester gate',
+      steps: [],
+      loops: [
+        {
+          id: 'tester-gate',
+          until: 'verdict_approved',
+          maxIterations: 1,
+          onExhausted: 'escalate',
+          steps: [
+            { name: 'implement', agent: 'mock', capability: 'implementation' },
+            { name: 'test', agent: 'mock', capability: 'testing' },
+            { name: 'review', agent: 'mock', capability: 'review' },
+          ],
+        },
+      ],
+    };
+
+    const workflow = createWorkflow('Tester gate loop', definition);
+    const result = await runAgentLoop({
+      loop: definition.loops![0],
+      workflowId: workflow.id,
+      workItemId: item.id,
+      options: { maxIterations: 1, autoLoop: false },
+    });
+
+    expect(result.reviewVerdict).toBe('approved');
+    expect(result.loopStatus).toBe('escalated');
+    expect(getWorkItem(item.id)?.loopStatus).toBe('escalated');
+
+    delete process.env.AGENTHUB_WORK_DIR;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
 });

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import type { WorkItem } from '../types';
-import type { EvalResult } from './eval-harness';
+import type { EvalResult, ReviewVerdict, TestingVerdict } from './eval-harness';
 import { resolveWorkItemOutputDir, resolveWorkItemWorkDir, hasLinkedRepository } from './work-item-context';
 import { logWorkItemActivity } from './work-item-activity';
 
@@ -154,6 +154,77 @@ function maybeCreatePullRequest(item: WorkItem, diff: GitDiffSnapshot): string |
   } catch {
     return undefined;
   }
+}
+
+function resolveArtifactDir(item: WorkItem, workDir?: string): string {
+  return resolveWorkItemOutputDir(item) || workDir || resolveWorkDirFallback(item);
+}
+
+function resolveWorkDirFallback(item: WorkItem): string {
+  return resolveWorkItemWorkDir(item) || process.cwd();
+}
+
+/** Persist a single loop step transcript under the work-item output dir. */
+export function writeLoopStepArtifact(input: {
+  item: WorkItem;
+  workDir?: string;
+  iteration: number;
+  phase: string;
+  stepName: string;
+  content: string;
+  auditId?: string;
+}): string {
+  const dir = path.join(resolveArtifactDir(input.item, input.workDir), 'loop-artifacts');
+  fs.mkdirSync(dir, { recursive: true });
+  const safeStep = input.stepName.replace(/[^\w.-]+/g, '_').slice(0, 64);
+  const file = path.join(dir, `iter-${input.iteration}-${input.phase}-${safeStep}.md`);
+  const body = [
+    `# ${input.item.key} · iteration ${input.iteration} · ${input.phase}/${input.stepName}`,
+    '',
+    input.auditId ? `Audit: ${input.auditId}` : null,
+    '',
+    input.content || '(empty)',
+    '',
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
+  fs.writeFileSync(file, body, 'utf-8');
+  return file;
+}
+
+/** Persist eval + gate summary for an iteration (artifact-first memory). */
+export function writeLoopEvalArtifact(input: {
+  item: WorkItem;
+  workDir?: string;
+  iteration: number;
+  evalResults: EvalResult[];
+  reviewVerdict: ReviewVerdict;
+  testingVerdict?: TestingVerdict;
+}): string {
+  const dir = path.join(resolveArtifactDir(input.item, input.workDir), 'loop-artifacts');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `iter-${input.iteration}-evals.json`);
+  fs.writeFileSync(
+    file,
+    JSON.stringify(
+      {
+        workItemKey: input.item.key,
+        iteration: input.iteration,
+        reviewVerdict: input.reviewVerdict,
+        testingVerdict: input.testingVerdict ?? 'unknown',
+        gates: {
+          reviewer: input.reviewVerdict === 'approved',
+          tester: input.testingVerdict === 'pass' || input.testingVerdict === 'unknown',
+          harness: input.evalResults.every((e) => e.passed),
+        },
+        evals: input.evalResults,
+      },
+      null,
+      2
+    ),
+    'utf-8'
+  );
+  return file;
 }
 
 /** Persist git diff (and optional PR) after a successful implement/review loop. */
